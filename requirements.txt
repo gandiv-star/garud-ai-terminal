@@ -1,0 +1,8 @@
+pandas
+numpy
+python-dotenv
+requests
+pydantic
+SQLAlchemy
+scikit-learn
+pytest
