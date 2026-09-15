@@ -4,6 +4,8 @@ from config.settings import load_settings
 from data.data_validator import DataValidator
 from data.data_loader import Bar
 from data.yfinance_loader import YFinanceLoader
+from database.db import Database
+from database.models import TradeRecord, AuditEvent
 
 
 def main() -> None:
@@ -27,15 +29,7 @@ def main() -> None:
 
     print("\n--- Test 2: deliberately BAD data (high < low) ---")
     bad_bars = [
-        Bar(
-            symbol="FAKE",
-            timestamp=datetime.now(),
-            open=100,
-            high=90,   # high < low — invalid on purpose
-            low=95,
-            close=92,
-            volume=1000,
-        )
+        Bar(symbol="FAKE", timestamp=datetime.now(), open=100, high=90, low=95, close=92, volume=1000)
     ]
     result = validator.validate_bars("FAKE", bad_bars)
     print(f"Valid: {result.is_valid}, issues: {result.issues}")
@@ -43,6 +37,45 @@ def main() -> None:
     print("\n--- Test 3: empty data ---")
     result = validator.validate_bars("EMPTY", [])
     print(f"Valid: {result.is_valid}, issues: {result.issues}")
+
+    print("\n--- Test 4: database save + retrieve ---")
+    try:
+        db = Database(settings)
+        db.connect()
+
+        trade = TradeRecord(
+            internal_order_id="test-order-001",
+            symbol="RELIANCE",
+            strategy_name="momentum",
+            strategy_version="0.1.0",
+            decision="BUY",
+            ai_score=87.0,
+            entry_price=1250.0,
+            stop_price=1220.0,
+            target_price=1310.0,
+            quantity=10,
+            risk_amount=300.0,
+            regime="MODERATE_BULL",
+            sector="Energy",
+            timestamp=datetime.now(),
+        )
+        db.save_trade(trade)
+
+        audit = AuditEvent(
+            timestamp=datetime.now(),
+            event_type="TRADE_DECISION",
+            symbol="RELIANCE",
+            payload={"decision": "BUY", "reason": "test entry"},
+        )
+        db.save_audit_event(audit)
+
+        saved_trades = db.get_trades()
+        print(f"Trades in DB: {len(saved_trades)}")
+        if saved_trades:
+            t = saved_trades[0]
+            print(f"Latest trade: {t.symbol} {t.decision} qty={t.quantity} score={t.ai_score}")
+    except Exception as e:
+        print(f"Test 4 failed: {e}")
 
 
 if __name__ == "__main__":
