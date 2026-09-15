@@ -18,6 +18,10 @@ class YFinanceLoader(DataLoader):
         ticker = yf.Ticker(to_yfinance_symbol(symbol))
         df = ticker.history(start=start, end=end, interval=interval)
 
+        # Drop incomplete/stale rows (e.g. today's bar before Yahoo has
+        # finalized it) — never build a Bar out of missing OHLCV data.
+        df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
+
         bars: list[Bar] = []
         for timestamp, row in df.iterrows():
             bars.append(
