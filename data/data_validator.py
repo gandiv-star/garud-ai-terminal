@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from data.data_loader import Bar
 
@@ -33,4 +34,9 @@ class DataValidator:
         return ValidationResult(is_valid=len(issues) == 0, issues=issues)
 
     def is_stale(self, symbol: str, latest_bar: Bar, max_staleness_seconds: int) -> bool:
-        raise NotImplementedError
+        if latest_bar.timestamp.tzinfo is not None:
+            now = datetime.now(latest_bar.timestamp.tzinfo)
+        else:
+            now = datetime.now()
+        age_seconds = (now - latest_bar.timestamp).total_seconds()
+        return age_seconds > max_staleness_seconds
