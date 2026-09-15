@@ -6,3 +6,4 @@ pydantic
 SQLAlchemy
 scikit-learn
 pytest
+yfinance
