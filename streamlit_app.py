@@ -8,6 +8,7 @@ from data.data_validator import DataValidator
 from data.yfinance_loader import YFinanceLoader
 from database.db import Database
 from regime.regime_engine import RegimeEngine
+from sector.sector_analysis import SectorAnalysisEngine
 
 st.set_page_config(page_title="Garud AI Terminal", layout="wide")
 
@@ -34,6 +35,29 @@ if st.button("Detect current regime"):
             st.json(assessment.supporting_features)
         except Exception as e:
             st.error(f"Regime detection failed: {e}")
+
+st.divider()
+st.subheader("Sector strength")
+if st.button("Rank sectors (1 month)"):
+    with st.spinner("Fetching sector indices..."):
+        try:
+            sector_engine = SectorAnalysisEngine()
+            rankings = sector_engine.rank_sectors()
+            df = pd.DataFrame(
+                [
+                    {
+                        "sector": r.sector,
+                        "sector_return_%": r.sector_return,
+                        "index_return_%": r.index_return,
+                        "relative_strength": round(r.relative_strength, 2),
+                    }
+                    for r in rankings
+                ]
+            )
+            st.bar_chart(df.set_index("sector")["relative_strength"])
+            st.dataframe(df)
+        except Exception as e:
+            st.error(f"Sector ranking failed: {e}")
 
 st.divider()
 st.subheader("Fetch historical data")
