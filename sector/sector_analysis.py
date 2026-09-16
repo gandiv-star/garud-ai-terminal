@@ -2,18 +2,18 @@ from dataclasses import dataclass
 
 import yfinance as yf
 
-INDEX_TICKER = "^NSEI"
-
-SECTOR_TICKERS = {
-    "Banking": "^NSEBANK",
-    "IT": "^CNXIT",
-    "Pharma": "^CNXPHARMA",
-    "Auto": "^CNXAUTO",
-    "Metal": "^CNXMETAL",
-    "FMCG": "^CNXFMCG",
-    "Energy": "^CNXENERGY",
-    "Realty": "^CNXREALTY",
+SECTOR_STOCKS = {
+    "Banking": ["HDFCBANK", "ICICIBANK", "SBIN"],
+    "IT": ["TCS", "INFY", "WIPRO"],
+    "Pharma": ["SUNPHARMA", "DRREDDY", "CIPLA"],
+    "Auto": ["MARUTI", "BAJAJ-AUTO"],
+    "Metal": ["TATASTEEL", "HINDALCO", "JSWSTEEL"],
+    "FMCG": ["HINDUNILVR", "ITC", "NESTLEIND"],
+    "Energy": ["RELIANCE", "ONGC", "NTPC"],
+    "Realty": ["DLF", "GODREJPROP", "OBEROIRLTY"],
 }
+
+INDEX_TICKER = "^NSEI"
 
 
 @dataclass
@@ -27,42 +27,39 @@ class SectorStrength:
         return self.sector_return - self.index_return
 
 
-def _returns_from_close(close_series) -> float:
-    close_series = close_series.dropna()
-    if len(close_series) < 2:
+def _period_return(ticker: str, period: str = "1mo") -> float | None:
+    df = yf.Ticker(ticker).history(period=period)
+    df = df.dropna(subset=["Close"])
+    if len(df) < 2:
         return None
-    start_price = float(close_series.iloc[0])
-    end_price = float(close_series.iloc[-1])
+    start_price = float(df["Close"].iloc[0])
+    end_price = float(df["Close"].iloc[-1])
     return (end_price - start_price) / start_price * 100
 
 
 class SectorAnalysisEngine:
     def rank_sectors(self, index_symbol: str = "NIFTY", period: str = "1mo") -> list[SectorStrength]:
-        all_tickers = [INDEX_TICKER] + list(SECTOR_TICKERS.values())
-        data = yf.download(all_tickers, period=period, group_by="ticker", progress=False)
-
-        index_return = _returns_from_close(data[INDEX_TICKER]["Close"])
+        index_return = _period_return(INDEX_TICKER, period)
         if index_return is None:
-            raise RuntimeError(f"Could not fetch index data for {INDEX_TICKER}")
+            raise RuntimeError("Could not fetch NIFTY index data")
 
         results: list[SectorStrength] = []
-        skipped: list[str] = []
-        for sector_name, ticker in SECTOR_TICKERS.items():
-            sector_return = _returns_from_close(data[ticker]["Close"])
-            if sector_return is None:
-                skipped.append(sector_name)
+        for sector_name, stocks in SECTOR_STOCKS.items():
+            stock_returns = []
+            for stock in stocks:
+                ret = _period_return(f"{stock}.NS", period)
+                if ret is not None:
+                    stock_returns.append(ret)
+            if not stock_returns:
                 continue
+            avg_return = sum(stock_returns) / len(stock_returns)
             results.append(
                 SectorStrength(
                     sector=sector_name,
-                    sector_return=round(sector_return, 2),
+                    sector_return=round(avg_return, 2),
                     index_return=round(index_return, 2),
                 )
             )
-
-        if skipped:
-            import streamlit as st
-            st.warning(f"Skipped sectors with no data: {skipped}")
 
         results.sort(key=lambda s: s.relative_strength, reverse=True)
         return results
