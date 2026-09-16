@@ -7,3 +7,4 @@ SQLAlchemy
 scikit-learn
 pytest
 yfinance
+streamlit
