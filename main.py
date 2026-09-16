@@ -2,33 +2,27 @@ from datetime import datetime, timedelta
 
 import yfinance as yf
 
-from config.settings import load_settings
+print("--- Diagnostic 2: ^CNXAUTO with different fetch methods ---")
 
-settings = load_settings()
-print(f"Garud AI Terminal — mode: {settings.trading_mode.value}")
+ticker = "^CNXAUTO"
 
-print("\n--- Diagnostic: raw yfinance data per sector ticker ---")
-tickers = {
-    "NIFTY": "^NSEI",
-    "Banking": "^NSEBANK",
-    "IT": "^CNXIT",
-    "Pharma": "^CNXPHARMA",
-    "Auto": "^CNXAUTO",
-    "Metal": "^CNXMETAL",
-    "FMCG": "^CNXFMCG",
-    "Energy": "^CNXENERGY",
-    "Realty": "^CNXREALTY",
-}
+print("\nMethod A: period='1mo'")
+df_a = yf.Ticker(ticker).history(period="1mo")
+print(f"Rows: {len(df_a)}")
+print(df_a.tail(3))
 
-for name, ticker in tickers.items():
-    try:
-        df = yf.Ticker(ticker).history(period="1mo")
-        df = df.dropna(subset=["Close"])
-        if len(df) >= 2:
-            first = df["Close"].iloc[0]
-            last = df["Close"].iloc[-1]
-            print(f"{name} ({ticker}): {len(df)} rows, first={first:.2f} last={last:.2f}")
-        else:
-            print(f"{name} ({ticker}): only {len(df)} row(s) — NOT ENOUGH DATA")
-    except Exception as e:
-        print(f"{name} ({ticker}): FAILED — {e}")
+print("\nMethod B: period='3mo'")
+df_b = yf.Ticker(ticker).history(period="3mo")
+print(f"Rows: {len(df_b)}")
+
+print("\nMethod C: explicit start/end (last 30 days)")
+end = datetime.now()
+start = end - timedelta(days=30)
+df_c = yf.Ticker(ticker).history(start=start, end=end)
+print(f"Rows: {len(df_c)}")
+print(df_c.tail(3))
+
+print("\nMethod D: yf.download with explicit start/end")
+df_d = yf.download(ticker, start=start, end=end, progress=False)
+print(f"Rows: {len(df_d)}")
+print(df_d.tail(3))
