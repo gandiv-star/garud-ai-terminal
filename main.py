@@ -6,6 +6,7 @@ from data.data_loader import Bar
 from data.yfinance_loader import YFinanceLoader
 from database.db import Database
 from database.models import TradeRecord, AuditEvent
+from regime.regime_engine import RegimeEngine
 
 
 def main() -> None:
@@ -42,33 +43,18 @@ def main() -> None:
     try:
         db = Database(settings)
         db.connect()
-
         trade = TradeRecord(
-            internal_order_id="test-order-001",
-            symbol="RELIANCE",
-            strategy_name="momentum",
-            strategy_version="0.1.0",
-            decision="BUY",
-            ai_score=87.0,
-            entry_price=1250.0,
-            stop_price=1220.0,
-            target_price=1310.0,
-            quantity=10,
-            risk_amount=300.0,
-            regime="MODERATE_BULL",
-            sector="Energy",
-            timestamp=datetime.now(),
+            internal_order_id="test-order-001", symbol="RELIANCE", strategy_name="momentum",
+            strategy_version="0.1.0", decision="BUY", ai_score=87.0, entry_price=1250.0,
+            stop_price=1220.0, target_price=1310.0, quantity=10, risk_amount=300.0,
+            regime="MODERATE_BULL", sector="Energy", timestamp=datetime.now(),
         )
         db.save_trade(trade)
-
         audit = AuditEvent(
-            timestamp=datetime.now(),
-            event_type="TRADE_DECISION",
-            symbol="RELIANCE",
+            timestamp=datetime.now(), event_type="TRADE_DECISION", symbol="RELIANCE",
             payload={"decision": "BUY", "reason": "test entry"},
         )
         db.save_audit_event(audit)
-
         saved_trades = db.get_trades()
         print(f"Trades in DB: {len(saved_trades)}")
         if saved_trades:
@@ -76,6 +62,17 @@ def main() -> None:
             print(f"Latest trade: {t.symbol} {t.decision} qty={t.quantity} score={t.ai_score}")
     except Exception as e:
         print(f"Test 4 failed: {e}")
+
+    print("\n--- Test 5: market regime detection (NIFTY) ---")
+    try:
+        regime_engine = RegimeEngine()
+        assessment = regime_engine.detect()
+        print(f"Regime: {assessment.regime.value}")
+        print(f"Confidence: {assessment.confidence}")
+        print(f"Risk level: {assessment.risk_level.value}")
+        print(f"Features: {assessment.supporting_features}")
+    except Exception as e:
+        print(f"Test 5 failed: {e}")
 
 
 if __name__ == "__main__":
