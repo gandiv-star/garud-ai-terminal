@@ -7,12 +7,15 @@ from data.data_loader import Bar
 @dataclass
 class FeatureSet:
     symbol: str
+    price: float | None = None
     trend_strength: float | None = None
     momentum: float | None = None
     atr: float | None = None
     volatility: float | None = None
     relative_volume: float | None = None
     gap_pct: float | None = None
+    prior_high_20d: float | None = None
+    prior_low_20d: float | None = None
 
 
 class FeatureEngine:
@@ -22,9 +25,9 @@ class FeatureEngine:
 
         closes = [b.close for b in bars]
         volumes = [b.volume for b in bars]
+        price = closes[-1]
 
         sma20 = sum(closes[-20:]) / 20
-        price = closes[-1]
         trend_strength = (price - sma20) / sma20 * 100
 
         lookback = min(10, len(closes) - 1)
@@ -51,12 +54,19 @@ class FeatureEngine:
         prev_close = closes[-2]
         gap_pct = (bars[-1].open - prev_close) / prev_close * 100
 
+        prior_bars = bars[-21:-1] if len(bars) >= 21 else bars[:-1]
+        prior_high_20d = max(b.high for b in prior_bars) if prior_bars else None
+        prior_low_20d = min(b.low for b in prior_bars) if prior_bars else None
+
         return FeatureSet(
             symbol=symbol,
+            price=round(price, 4),
             trend_strength=round(trend_strength, 4),
             momentum=round(momentum, 4),
             atr=round(atr, 4),
             volatility=round(volatility, 4),
             relative_volume=round(relative_volume, 4) if relative_volume else None,
             gap_pct=round(gap_pct, 4),
+            prior_high_20d=round(prior_high_20d, 4) if prior_high_20d else None,
+            prior_low_20d=round(prior_low_20d, 4) if prior_low_20d else None,
         )
