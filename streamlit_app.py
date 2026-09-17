@@ -7,8 +7,10 @@ from config.settings import load_settings
 from data.data_validator import DataValidator
 from data.yfinance_loader import YFinanceLoader
 from database.db import Database
+from features.feature_engine import FeatureEngine
 from regime.regime_engine import RegimeEngine
 from sector.sector_analysis import SectorAnalysisEngine
+from strategies.momentum import MomentumStrategy
 
 st.set_page_config(page_title="Garud AI Terminal", layout="wide")
 
@@ -39,7 +41,7 @@ if st.button("Detect current regime"):
 st.divider()
 st.subheader("Sector strength")
 if st.button("Rank sectors (1 month)"):
-    with st.spinner("Fetching sector indices..."):
+    with st.spinner("Fetching sector stocks..."):
         try:
             sector_engine = SectorAnalysisEngine()
             rankings = sector_engine.rank_sectors()
@@ -58,6 +60,35 @@ if st.button("Rank sectors (1 month)"):
             st.dataframe(df)
         except Exception as e:
             st.error(f"Sector ranking failed: {e}")
+
+st.divider()
+st.subheader("Momentum strategy signal")
+mom_symbol = st.text_input("NSE symbol for signal", value="RELIANCE", key="mom_symbol")
+if st.button("Get momentum signal"):
+    with st.spinner(f"Analyzing {mom_symbol}..."):
+        try:
+            loader = YFinanceLoader()
+            end = datetime.now()
+            start = end - timedelta(days=60)
+            bars = loader.get_historical_bars(mom_symbol, start, end)
+
+            fe = FeatureEngine()
+            features = fe.compute(mom_symbol, bars)
+
+            regime_engine = RegimeEngine()
+            regime = regime_engine.detect()
+
+            strategy = MomentumStrategy()
+            signal = strategy.evaluate(mom_symbol, features, regime)
+
+            c1, c2 = st.columns(2)
+            c1.metric("Decision", signal.decision.value)
+            c2.metric("Confidence", f"{signal.confidence:.2f}")
+            st.write(signal.rationale)
+            with st.expander("Feature details"):
+                st.json(features.__dict__)
+        except Exception as e:
+            st.error(f"Signal generation failed: {e}")
 
 st.divider()
 st.subheader("Fetch historical data")
