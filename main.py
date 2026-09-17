@@ -4,8 +4,11 @@ from data.yfinance_loader import YFinanceLoader
 from features.feature_engine import FeatureEngine
 from regime.regime_engine import RegimeEngine
 from strategies.momentum import MomentumStrategy
+from strategies.breakout import BreakoutStrategy
+from strategies.trend_following import TrendFollowingStrategy
+from strategies.mean_reversion import MeanReversionStrategy
 
-print("--- Verify: FeatureEngine + MomentumStrategy on RELIANCE ---")
+print("--- Verify: 4 strategies on RELIANCE ---")
 try:
     loader = YFinanceLoader()
     end = datetime.now()
@@ -15,17 +18,18 @@ try:
 
     fe = FeatureEngine()
     features = fe.compute("RELIANCE", bars)
-    print(f"Features: trend={features.trend_strength} momentum={features.momentum} "
-          f"atr={features.atr} volatility={features.volatility} "
-          f"rel_vol={features.relative_volume} gap={features.gap_pct}")
+    print(f"price={features.price} trend={features.trend_strength} momentum={features.momentum} "
+          f"rel_vol={features.relative_volume} prior_high_20d={features.prior_high_20d} "
+          f"prior_low_20d={features.prior_low_20d}")
 
     regime_engine = RegimeEngine()
     regime = regime_engine.detect()
     print(f"Regime: {regime.regime.value}")
 
-    strategy = MomentumStrategy()
-    signal = strategy.evaluate("RELIANCE", features, regime)
-    print(f"Signal: {signal.decision.value} confidence={signal.confidence}")
-    print(f"Rationale: {signal.rationale}")
+    strategies = [MomentumStrategy(), BreakoutStrategy(), TrendFollowingStrategy(), MeanReversionStrategy()]
+    for strat in strategies:
+        signal = strat.evaluate("RELIANCE", features, regime)
+        print(f"\n{strat.name}: {signal.decision.value} confidence={signal.confidence}")
+        print(f"  Rationale: {signal.rationale}")
 except Exception as e:
     print(f"FAILED: {e}")
