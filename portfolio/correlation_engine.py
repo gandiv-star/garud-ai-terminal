@@ -1,6 +1,7 @@
-from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 import yfinance as yf
+from dataclasses import dataclass
 
 
 @dataclass
@@ -11,14 +12,16 @@ class CorrelationCheck:
 
 
 def _daily_returns(symbol: str, lookback_days: int) -> list[float]:
-    df = yf.Ticker(f"{symbol}.NS").history(period=f"{lookback_days}d")
+    end = datetime.now()
+    start = end - timedelta(days=lookback_days)
+    df = yf.Ticker(f"{symbol}.NS").history(start=start, end=end)
     df = df.dropna(subset=["Close"])
     closes = df["Close"].tolist()
     return [(closes[i] - closes[i - 1]) / closes[i - 1] for i in range(1, len(closes))]
 
 
 class CorrelationEngine:
-    def pairwise_correlation(self, symbol_a: str, symbol_b: str, lookback_days: int = 60) -> CorrelationCheck:
+    def pairwise_correlation(self, symbol_a: str, symbol_b: str, lookback_days: int = 90) -> CorrelationCheck:
         returns_a = _daily_returns(symbol_a, lookback_days)
         returns_b = _daily_returns(symbol_b, lookback_days)
         n = min(len(returns_a), len(returns_b))
