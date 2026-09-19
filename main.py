@@ -1,24 +1,30 @@
 from datetime import datetime, timedelta
 
-import yfinance as yf
+from backtest.backtest_engine import BacktestEngine, ChargeModel
 
-from portfolio.correlation_engine import CorrelationEngine, _daily_returns
+print("--- Verify: BacktestEngine on RELIANCE, last 1 year, MomentumStrategy ---")
+try:
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=365)
 
-print("--- Diagnostic: how many data points do we actually get? ---")
-returns_hdfc = _daily_returns("HDFCBANK", 90)
-returns_icici = _daily_returns("ICICIBANK", 90)
-print(f"HDFCBANK: {len(returns_hdfc)} daily returns")
-print(f"ICICIBANK: {len(returns_icici)} daily returns")
+    engine = BacktestEngine(ChargeModel())
+    result = engine.run("RELIANCE", start_date, end_date, capital=100000.0)
 
-print("\n--- Verify: correlation between HDFCBANK and ICICIBANK (both banking) ---")
-ce = CorrelationEngine()
-result = ce.pairwise_correlation("HDFCBANK", "ICICIBANK", lookback_days=90)
-print(f"Correlation: {result.correlation}")
+    print(f"Trade count: {result.trade_count}")
+    print(f"Gross P&L: {result.gross_pnl}")
+    print(f"Total charges: {result.total_charges}")
+    print(f"Net P&L: {result.net_pnl}")
 
-print("\n--- Verify: correlation between HDFCBANK and SUNPHARMA (unrelated sector) ---")
-result2 = ce.pairwise_correlation("HDFCBANK", "SUNPHARMA", lookback_days=90)
-print(f"Correlation: {result2.correlation}")
-
-print("\n--- Sanity check: a stock's correlation with ITSELF must be 1.0 ---")
-result3 = ce.pairwise_correlation("HDFCBANK", "HDFCBANK", lookback_days=90)
-print(f"Self-correlation: {result3.correlation} (must be 1.0 or very close)")
+    if result.trades:
+        print("\nIndividual trades:")
+        for t in result.trades:
+            print(
+                f"  {t.entry_date.date()} -> {t.exit_date.date()} | "
+                f"entry={t.entry_price} exit={t.exit_price} qty={t.quantity} | "
+                f"net={t.net_pnl} ({t.exit_reason})"
+            )
+    else:
+        print("\nNo trades triggered in this window — Momentum strategy only enters in "
+              "bull-favorable regimes, so a bearish/sideways year can legitimately give zero trades.")
+except Exception as e:
+    print(f"FAILED: {e}")
