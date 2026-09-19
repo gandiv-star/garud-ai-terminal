@@ -1,26 +1,17 @@
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-
-@dataclass
-class AuditRecord:
-    timestamp: datetime
-    symbol: str
-    decision: str
-    reason: str
-    details: dict = field(default_factory=dict)
+from database.models import AuditEvent
 
 
 class AuditTrail:
     def __init__(self, database):
         self.database = database
 
-    def record(self, symbol: str, decision: str, reason: str, **details) -> None:
-        record = AuditRecord(
+    def record(self, symbol: str, event_type: str, **details) -> None:
+        event = AuditEvent(
             timestamp=datetime.now(timezone.utc),
+            event_type=event_type,
             symbol=symbol,
-            decision=decision,
-            reason=reason,
-            details=details,
+            payload=details,
         )
-        self.database.save_audit_event(record)
+        self.database.save_audit_event(event)
