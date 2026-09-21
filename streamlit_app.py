@@ -4,7 +4,10 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 import streamlit as st
 
+from analytics.performance_metrics import PerformanceCalculator
+from analytics.strategy_health import StrategyHealthMonitor
 from audit.audit_trail import AuditTrail
+from backtest.backtest_engine import BacktestEngine, ChargeModel
 from config.settings import load_settings
 from core.constants import Decision
 from data.data_validator import DataValidator
@@ -172,6 +175,50 @@ if "last_analysis" in st.session_state:
                     st.success(f"Paper trade logged: {trade.internal_order_id}")
                 except Exception as e:
                     st.error(f"Logging failed: {e}")
+
+st.divider()
+st.subheader("Backtest (Momentum strategy)")
+bt_symbol = st.text_input("NSE symbol", value="RELIANCE", key="bt_symbol")
+bt_days = st.slider("Backtest period (days)", 90, 730, 365, key="bt_days")
+bt_capital = st.number_input("Starting capital (Rs)", value=100000.0, step=10000.0, key="bt_capital")
+
+if st.button("Run backtest"):
+    with st.spinner("Running backtest..."):
+        try:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=bt_days)
+            bt_engine = BacktestEngine(ChargeModel())
+            bt_result = bt_engine.run(bt_symbol, start_date, end_date, capital=bt_capital)
+
+            perf_calc = PerformanceCalculator()
+            summary = perf_calc.summarize(bt_result.trades, starting_capital=bt_capital)
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Trades", summary.trade_count)
+            c2.metric("Net P&L", f"Rs.{summary.net_pnl}")
+            c3.metric("Win rate", f"{summary.win_rate * 100:.1f}%")
+            c4.metric("Max drawdown", f"{summary.max_drawdown_pct}%")
+
+            c5, c6, c7 = st.columns(3)
+            c5.metric("Profit factor", summary.profit_factor)
+            c6.metric("Expectancy/trade", f"Rs.{summary.expectancy}")
+            c7.metric("Total charges", f"Rs.{bt_result.total_charges}")
+
+            if bt_result.trades:
+                trades_df = pd.DataFrame([t.__dict__ for t in bt_result.trades])
+                st.dataframe(trades_df)
+
+                health_monitor = StrategyHealthMonitor()
+                health = health_monitor.assess("momentum", bt_result.trades, min_trades=6)
+                st.write(f"**Strategy health:** {health.notes}")
+                if health.historical_win_rate or health.recent_win_rate:
+                    hc1, hc2 = st.columns(2)
+                    hc1.metric("Recent win rate", f"{health.recent_win_rate * 100:.1f}%")
+                    hc2.metric("Historical win rate", f"{health.historical_win_rate * 100:.1f}%")
+            else:
+                st.info("No trades in this window — momentum only enters during bull-favorable regimes.")
+        except Exception as e:
+            st.error(f"Backtest failed: {e}")
 
 st.divider()
 st.subheader("Market regime (NIFTY)")
