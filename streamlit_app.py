@@ -38,9 +38,24 @@ settings = load_settings()
 st.title("Garud AI Terminal")
 st.caption("Skeleton-stage dashboard — shows what's actually built so far")
 
-col1, col2 = st.columns(2)
+if "kill_switch_engaged" not in st.session_state:
+    st.session_state["kill_switch_engaged"] = not settings.kill_switch_enabled
+
+col1, col2, col3 = st.columns(3)
 col1.metric("Mode", settings.trading_mode.value)
-col2.metric("Kill switch", "Enabled" if settings.kill_switch_enabled else "Disabled")
+if st.session_state["kill_switch_engaged"]:
+    col2.metric("Kill switch", "TRIGGERED")
+    if col3.button("Reset (manual)"):
+        st.session_state["kill_switch_engaged"] = False
+        st.rerun()
+else:
+    col2.metric("Kill switch", "Enabled")
+    if col3.button("TRIGGER KILL SWITCH", type="primary"):
+        st.session_state["kill_switch_engaged"] = True
+        st.rerun()
+
+if st.session_state["kill_switch_engaged"]:
+    st.error("Kill switch is TRIGGERED — all new trade actions below are blocked until manually reset.")
 
 st.divider()
 st.subheader("Full analysis: Data -> Regime -> Strategies -> Score -> Risk -> Explanation")
@@ -149,7 +164,9 @@ if "last_analysis" in st.session_state:
         )
 
         can_log = settings.trading_mode.value != "BACKTEST"
-        if not can_log:
+        if st.session_state.get("kill_switch_engaged"):
+            st.warning("Kill switch is triggered — logging blocked.")
+        elif not can_log:
             st.info("Mode is BACKTEST — switch TRADING_MODE to PAPER to log trades.")
         elif r["overall_decision"] != Decision.NO_TRADE and r["verdict"].approved:
             if st.button("Log as Paper Trade"):
