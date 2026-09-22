@@ -1,23 +1,21 @@
-from brokers.upstox_broker import UpstoxBroker
+from security.secrets_manager import SecretsManager
 
-print("--- Verify: Upstox read-only endpoints (funds/positions/holdings) ---")
+print("--- Diagnostic: is the token being read correctly (masked, safe to share) ---")
 try:
-    broker = UpstoxBroker()
-    broker.authenticate()
-    print("Token present, authenticate() passed.")
-
-    print("\n--- Funds ---")
-    funds = broker.get_funds()
-    print(funds)
-
-    print("\n--- Positions ---")
-    positions = broker.get_positions()
-    print(positions)
-
-    print("\n--- Holdings ---")
-    holdings = broker.get_holdings()
-    print(holdings)
+    token = SecretsManager.get("BROKER_ACCESS_TOKEN")
+    print(f"Token length: {len(token)}")
+    print(f"Starts with: {token[:6]}...")
+    print(f"Ends with: ...{token[-4:]}")
+    print(f"Has leading/trailing whitespace: {token != token.strip()}")
 except Exception as e:
     print(f"FAILED: {e}")
-    print("If this is a 401/403: could be an expired token (refresh via Upstox login) "
-          "OR a static-IP whitelist mismatch (GitHub Actions IP isn't fixed).")
+
+print("\n--- Retry funds call with explicit error body ---")
+try:
+    import requests
+    headers = {"Accept": "application/json", "Authorization": f"Bearer {token.strip()}"}
+    response = requests.get("https://api.upstox.com/v2/user/get-funds-and-margin", headers=headers)
+    print(f"Status: {response.status_code}")
+    print(f"Body: {response.text}")
+except Exception as e:
+    print(f"FAILED: {e}")
