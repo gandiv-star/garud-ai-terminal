@@ -65,6 +65,19 @@ class Database:
         finally:
             session.close()
 
+    def update_trade_exit(self, internal_order_id: str, exit_price: float, exit_timestamp, realized_pnl: float) -> None:
+        session = self._session()
+        try:
+            row = session.query(TradeRecordORM).filter_by(internal_order_id=internal_order_id).first()
+            if row is None:
+                raise ValueError(f"No trade found with internal_order_id={internal_order_id}")
+            row.exit_price = exit_price
+            row.exit_timestamp = exit_timestamp
+            row.realized_pnl = realized_pnl
+            session.commit()
+        finally:
+            session.close()
+
     def save_audit_event(self, audit_event: AuditEvent) -> None:
         session = self._session()
         try:
@@ -79,7 +92,7 @@ class Database:
         finally:
             session.close()
 
-    def get_trades(self, limit: int = 50) -> list[TradeRecord]:
+    def get_trades(self, limit: int = 50) -> list:
         session = self._session()
         try:
             rows = (
@@ -90,23 +103,13 @@ class Database:
             )
             return [
                 TradeRecord(
-                    internal_order_id=r.internal_order_id,
-                    symbol=r.symbol,
-                    strategy_name=r.strategy_name,
-                    strategy_version=r.strategy_version,
-                    decision=r.decision,
-                    ai_score=r.ai_score,
-                    entry_price=r.entry_price,
-                    stop_price=r.stop_price,
-                    target_price=r.target_price,
-                    quantity=r.quantity,
-                    risk_amount=r.risk_amount,
-                    regime=r.regime,
-                    sector=r.sector,
-                    timestamp=r.timestamp,
-                    broker_order_id=r.broker_order_id,
-                    exit_price=r.exit_price,
-                    exit_timestamp=r.exit_timestamp,
+                    internal_order_id=r.internal_order_id, symbol=r.symbol,
+                    strategy_name=r.strategy_name, strategy_version=r.strategy_version,
+                    decision=r.decision, ai_score=r.ai_score, entry_price=r.entry_price,
+                    stop_price=r.stop_price, target_price=r.target_price, quantity=r.quantity,
+                    risk_amount=r.risk_amount, regime=r.regime, sector=r.sector,
+                    timestamp=r.timestamp, broker_order_id=r.broker_order_id,
+                    exit_price=r.exit_price, exit_timestamp=r.exit_timestamp,
                     realized_pnl=r.realized_pnl,
                 )
                 for r in rows
