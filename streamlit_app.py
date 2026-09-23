@@ -194,6 +194,88 @@ if "last_analysis" in st.session_state:
                     st.error(f"Logging failed: {e}")
 
 st.divider()
+st.subheader("Open paper positions")
+try:
+    db = Database(settings)
+    db.connect()
+    all_trades = db.get_trades(limit=200)
+    open_trades = [t for t in all_trades if t.exit_price is None]
+
+    if not open_trades:
+        st.info("No open paper positions.")
+    else:
+        for t in open_trades:
+            with st.container():
+                oc1, oc2, oc3, oc4, oc5 = st.columns([2, 1, 1, 1, 2])
+                oc1.write(f"**{t.symbol}**")
+                oc2.write(f"Entry: {t.entry_price:.2f}")
+                oc3.write(f"Qty: {t.quantity}")
+                oc4.write(f"Stop: {t.stop_price:.2f}")
+                if oc5.button("Close at current price", key=f"close_{t.internal_order_id}"):
+                    if st.session_state.get("kill_switch_engaged"):
+                        st.warning("Kill switch is triggered — cannot close positions.")
+                    else:
+                        try:
+                            loader = YFinanceLoader()
+                            end = datetime.now()
+                            start = end - timedelta(days=5)
+                            bars = loader.get_historical_bars(t.symbol, start, end)
+                            if not bars:
+                                st.error("Could not fetch current price.")
+                            else:
+                                current_price = bars[-1].close
+                                charge_model = ChargeModel()
+                                buy_turnover = t.entry_price * t.quantity
+                                sell_turnover = current_price * t.quantity
+                                charges = charge_model.buy_charges(buy_turnover) + charge_model.sell_charges(sell_turnover)
+                                gross_pnl = (current_price - t.entry_price) * t.quantity
+                                net_pnl = gross_pnl - charges
+
+                                db.update_trade_exit(
+                                    internal_order_id=t.internal_order_id, exit_price=current_price,
+                                    exit_timestamp=datetime.now(timezone.utc), realized_pnl=round(net_pnl, 2),
+                                )
+                                trail = AuditTrail(db)
+                                trail.record(
+                                    symbol=t.symbol, event_type="PAPER_TRADE_CLOSED",
+                                    exit_price=current_price, realized_pnl=round(net_pnl, 2),
+                                )
+                                st.success(f"Closed {t.symbol} at {current_price:.2f} — net P&L: Rs.{net_pnl:.2f}")
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"Close failed: {e}")
+except Exception as e:
+    st.error(f"Loading open positions failed: {e}")
+
+st.divider()
+st.subheader("Closed paper trades — performance")
+try:
+    db = Database(settings)
+    db.connect()
+    all_trades = db.get_trades(limit=200)
+    closed_trades = [t for t in all_trades if t.exit_price is not None]
+
+    if not closed_trades:
+        st.info("No closed paper trades yet.")
+    else:
+        perf_calc = PerformanceCalculator()
+        closed_dicts = [
+            {"net_pnl": t.realized_pnl, "gross_pnl": (t.exit_price - t.entry_price) * t.quantity, "exit_date": t.exit_timestamp}
+            for t in closed_trades
+        ]
+        summary = perf_calc.summarize(closed_dicts, starting_capital=100000.0)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Closed trades", summary.trade_count)
+        c2.metric("Net P&L", f"Rs.{summary.net_pnl}")
+        c3.metric("Win rate", f"{summary.win_rate * 100:.1f}%")
+        c4.metric("Profit factor", summary.profit_factor)
+
+        df = pd.DataFrame([t.__dict__ for t in closed_trades])
+        st.dataframe(df)
+except Exception as e:
+    st.error(f"Loading closed trades failed: {e}")
+
+st.divider()
 st.subheader("Backtest (Momentum strategy)")
 bt_symbol = st.text_input("NSE symbol", value="RELIANCE", key="bt_symbol")
 bt_days = st.slider("Backtest period (days)", 90, 730, 365, key="bt_days")
@@ -290,17 +372,3 @@ if st.button("Fetch data"):
                 st.dataframe(df)
         except Exception as e:
             st.error(f"Fetch failed: {e}")
-
-st.divider()
-st.subheader("Logged trades")
-try:
-    db = Database(settings)
-    db.connect()
-    trades = db.get_trades()
-    if trades:
-        df = pd.DataFrame([t.__dict__ for t in trades])
-        st.dataframe(df)
-    else:
-        st.info("No trades logged yet.")
-except Exception as e:
-    st.error(f"Database read failed: {e}")
