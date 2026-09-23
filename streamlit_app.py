@@ -63,6 +63,7 @@ fa_symbol = st.text_input("NSE symbol", value="RELIANCE", key="full_analysis_sym
 fa_sector = st.text_input("Sector", value="Energy", key="full_analysis_sector")
 fa_capital = st.number_input("Available capital (Rs)", value=100000.0, step=10000.0)
 fa_open_positions = st.number_input("Current open positions", value=0, min_value=0, max_value=20, step=1)
+fa_force_buy = st.checkbox("Force BUY for testing (bypasses real signal — not a real trade decision)")
 
 if st.button("Run full analysis"):
     with st.spinner(f"Analyzing {fa_symbol}..."):
@@ -93,6 +94,8 @@ if st.button("Run full analysis"):
                 overall_decision = Decision.BUY
             elif candidate.score <= 35:
                 overall_decision = Decision.SELL
+            if fa_force_buy:
+                overall_decision = Decision.BUY
 
             result = {
                 "symbol": fa_symbol, "sector": fa_sector, "features": features,
