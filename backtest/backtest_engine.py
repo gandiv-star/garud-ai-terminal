@@ -190,3 +190,4 @@ class BacktestEngine:
             trade_count=len(trades),
             trades=trades,
         )
+        
