@@ -132,16 +132,24 @@ if st.button("Run full analysis"):
                 sector_value = sum(t.entry_price * t.quantity for t in open_for_risk if t.sector == fa_sector)
                 real_sector_exposure_pct = (sector_value / fa_capital) * 100 if fa_capital > 0 else 0.0
 
+                sorted_closed = sorted(closed_for_risk, key=lambda t: t.exit_timestamp)
+                equity_curve = fa_capital
+                peak_equity = equity_curve
+                for ct in sorted_closed:
+                    equity_curve += ct.realized_pnl
+                    peak_equity = max(peak_equity, equity_curve)
+                real_drawdown_pct = (peak_equity - equity_curve) / peak_equity * 100 if peak_equity > 0 else 0.0
+
                 risk_engine = RiskEngine(settings.risk)
                 verdict = risk_engine.evaluate(
                     proposal=proposal, available_capital=fa_capital, current_daily_pnl_pct=real_daily_pnl_pct,
-                    current_portfolio_drawdown_pct=0.0, current_sector_exposure_pct=real_sector_exposure_pct,
+                    current_portfolio_drawdown_pct=real_drawdown_pct, current_sector_exposure_pct=real_sector_exposure_pct,
                     open_position_count=len(open_for_risk),
                 )
                 result.update({
                     "stop_price": stop_result.stop_price, "quantity": quantity, "verdict": verdict,
                     "real_daily_pnl_pct": real_daily_pnl_pct, "real_sector_exposure_pct": real_sector_exposure_pct,
-                    "open_position_count": len(open_for_risk),
+                    "open_position_count": len(open_for_risk), "real_drawdown_pct": real_drawdown_pct,
                 })
 
             st.session_state["last_analysis"] = result
@@ -168,10 +176,11 @@ if "last_analysis" in st.session_state:
         c5.metric("Quantity", r["quantity"])
 
         st.write("**Real risk inputs used (from your paper-trade history):**")
-        c6, c7, c8 = st.columns(3)
+        c6, c7, c8, c9 = st.columns(4)
         c6.metric("Today's P&L", f"{r['real_daily_pnl_pct']:.2f}%")
         c7.metric(f"{r['sector']} exposure", f"{r['real_sector_exposure_pct']:.2f}%")
         c8.metric("Open positions", r["open_position_count"])
+        c9.metric("Portfolio drawdown", f"{r['real_drawdown_pct']:.2f}%")
 
         if r["verdict"].approved:
             st.success(f"Risk Engine: APPROVED")
@@ -465,4 +474,5 @@ if st.button("Fetch data"):
                 st.line_chart(df.set_index("date")["close"])
                 st.dataframe(df)
         except Exception as e:
-            st.error(f"Fetch failed: {e}")
+            st.error(f"Fetch failed: {e}")                    
+              
