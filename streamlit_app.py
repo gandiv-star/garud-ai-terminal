@@ -299,8 +299,9 @@ with tab_scanner:
                     st.write("**Portfolio Engine — rejected (with reason):**")
                     st.json(decision.rejected_symbols)
             except Exception as e:
-                st.error(f"Scan failed: {e}")
-                with tab_positions:
+                st.error(f"Scan failed: {e}"
+                         
+with tab_positions:
     st.subheader("Open paper positions")
     try:
         db = Database(settings)
@@ -500,5 +501,4 @@ with tab_market:
                     st.line_chart(df.set_index("date")["close"])
                     st.dataframe(df)
             except Exception as e:
-                st.error(f"Fetch failed: {e}")
-                              
+                st.error(f"Fetch failed: {e}")            
