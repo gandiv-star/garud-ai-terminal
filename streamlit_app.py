@@ -223,7 +223,6 @@ if "last_analysis" in st.session_state:
                     st.success(f"Paper trade logged: {trade.internal_order_id}")
                 except Exception as e:
                     st.error(f"Logging failed: {e}")
-
 st.divider()
 st.subheader("Stock scanner + portfolio selection")
 st.caption("Scans a small universe, scores each, then Portfolio Engine picks the best combination under sector/correlation limits.")
@@ -411,4 +410,59 @@ if st.button("Run backtest"):
                     hc2.metric("Historical win rate", f"{health.historical_win_rate * 100:.1f}%")
             else:
                 st.info("No trades in this window — momentum only enters during bull-favorable regimes.")
-        ex
+        except Exception as e:
+            st.error(f"Backtest failed: {e}")
+
+st.divider()
+st.subheader("Market regime (NIFTY)")
+if st.button("Detect current regime"):
+    with st.spinner("Fetching NIFTY data..."):
+        try:
+            engine = RegimeEngine()
+            assessment = engine.detect()
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Regime", assessment.regime.value)
+            c2.metric("Confidence", f"{assessment.confidence:.2f}")
+            c3.metric("Risk level", assessment.risk_level.value)
+            st.json(assessment.supporting_features)
+        except Exception as e:
+            st.error(f"Regime detection failed: {e}")
+
+st.divider()
+st.subheader("Sector strength")
+if st.button("Rank sectors (1 month)"):
+    with st.spinner("Fetching sector stocks..."):
+        try:
+            sector_engine = SectorAnalysisEngine()
+            rankings = sector_engine.rank_sectors()
+            df = pd.DataFrame(
+                [{"sector": r.sector, "sector_return_%": r.sector_return, "index_return_%": r.index_return,
+                  "relative_strength": round(r.relative_strength, 2)} for r in rankings]
+            )
+            st.bar_chart(df.set_index("sector")["relative_strength"])
+            st.dataframe(df)
+        except Exception as e:
+            st.error(f"Sector ranking failed: {e}")
+
+st.divider()
+st.subheader("Fetch historical data")
+symbol = st.text_input("NSE symbol", value="RELIANCE", key="fetch_symbol")
+days = st.slider("Days of history", 5, 90, 30)
+if st.button("Fetch data"):
+    with st.spinner(f"Fetching {symbol}..."):
+        try:
+            loader = YFinanceLoader()
+            validator = DataValidator()
+            end = datetime.now()
+            start = end - timedelta(days=days)
+            bars = loader.get_historical_bars(symbol, start, end)
+            result = validator.validate_bars(symbol, bars)
+            st.write(f"Fetched {len(bars)} bars. Valid: {result.is_valid}")
+            if result.issues:
+                st.warning(result.issues)
+            if bars:
+                df = pd.DataFrame([{"date": b.timestamp.date(), "close": b.close, "volume": b.volume} for b in bars])
+                st.line_chart(df.set_index("date")["close"])
+                st.dataframe(df)
+        except Exception as e:
+            st.error(f"Fetch failed: {e}")
