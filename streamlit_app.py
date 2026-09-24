@@ -303,6 +303,7 @@ with tab_scanner:
 
 with tab_positions:
     st.subheader("Open paper positions")
+    st.caption("Stop-loss is checked automatically whenever this tab loads/refreshes (not real-time streaming).")
     try:
         db = Database(settings)
         db.connect()
@@ -312,26 +313,61 @@ with tab_positions:
         if not open_trades:
             st.info("No open paper positions.")
         else:
+            loader = YFinanceLoader()
             for t in open_trades:
                 with st.container():
+                    current_price = None
+                    try:
+                        end = datetime.now()
+                        start = end - timedelta(days=5)
+                        bars = loader.get_historical_bars(t.symbol, start, end)
+                        if bars:
+                            current_price = bars[-1].close
+                    except Exception:
+                        pass
+
+                    stop_hit = current_price is not None and current_price <= t.stop_price
+
                     oc1, oc2, oc3, oc4, oc5 = st.columns([2, 1, 1, 1, 2])
-                    oc1.write(f"**{t.symbol}**")
+                    oc1.write(f"**{t.symbol}**" + (f" (now: {current_price:.2f})" if current_price is not None else ""))
                     oc2.write(f"Entry: {t.entry_price:.2f}")
                     oc3.write(f"Qty: {t.quantity}")
                     oc4.write(f"Stop: {t.stop_price:.2f}")
-                    if oc5.button("Close at current price", key=f"close_{t.internal_order_id}"):
+
+                    if stop_hit:
+                        oc5.error("STOP HIT")
                         if st.session_state.get("kill_switch_engaged"):
-                            st.warning("Kill switch is triggered — cannot close positions.")
+                            st.warning(f"{t.symbol}: stop-loss breached but kill switch is triggered — not auto-closing.")
                         else:
                             try:
-                                loader = YFinanceLoader()
-                                end = datetime.now()
-                                start = end - timedelta(days=5)
-                                bars = loader.get_historical_bars(t.symbol, start, end)
-                                if not bars:
-                                    st.error("Could not fetch current price.")
-                                else:
-                                    current_price = bars[-1].close
+                                charge_model = ChargeModel()
+                                buy_turnover = t.entry_price * t.quantity
+                                sell_turnover = t.stop_price * t.quantity
+                                charges = charge_model.buy_charges(buy_turnover) + charge_model.sell_charges(sell_turnover)
+                                gross_pnl = (t.stop_price - t.entry_price) * t.quantity
+                                net_pnl = gross_pnl - charges
+
+                                db.update_trade_exit(
+                                    internal_order_id=t.internal_order_id, exit_price=t.stop_price,
+                                    exit_timestamp=datetime.now(timezone.utc), realized_pnl=round(net_pnl, 2),
+                                )
+                                trail = AuditTrail(db)
+                                trail.record(
+                                    symbol=t.symbol, event_type="PAPER_TRADE_AUTO_STOPPED",
+                                    exit_price=t.stop_price, realized_pnl=round(net_pnl, 2),
+                                )
+                                st.error(f"Auto-closed {t.symbol} at stop {t.stop_price:.2f} — net P&L: Rs.{net_pnl:.2f}")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Auto-close failed: {e}")
+                    else:
+                        if oc5.button("Close at current price", key=f"close_{t.internal_order_id}"):
+                            if st.session_state.get("kill_switch_engaged"):
+                                st.warning("Kill switch is triggered — cannot close positions.")
+                            elif current_price is None:
+                                st.error("Could not fetch current price.")
+                            else:
+                                try:
                                     charge_model = ChargeModel()
                                     buy_turnover = t.entry_price * t.quantity
                                     sell_turnover = current_price * t.quantity
@@ -350,8 +386,8 @@ with tab_positions:
                                     )
                                     st.success(f"Closed {t.symbol} at {current_price:.2f} — net P&L: Rs.{net_pnl:.2f}")
                                     st.rerun()
-                            except Exception as e:
-                                st.error(f"Close failed: {e}")
+                                except Exception as e:
+                                    st.error(f"Close failed: {e}")
     except Exception as e:
         st.error(f"Loading open positions failed: {e}")
 
