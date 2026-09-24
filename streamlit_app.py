@@ -406,18 +406,33 @@ with tab_positions:
         st.error(f"Loading closed trades failed: {e}")
 
 with tab_backtest:
-    st.subheader("Backtest (Momentum strategy)")
+    st.subheader("Backtest (choose a strategy)")
     bt_symbol = st.text_input("NSE symbol", value="RELIANCE", key="bt_symbol")
+
+    strategy_options = {
+        "Momentum": MomentumStrategy,
+        "Breakout": BreakoutStrategy,
+        "Trend Following": TrendFollowingStrategy,
+        "Mean Reversion": MeanReversionStrategy,
+        "Relative Strength": RelativeStrengthStrategy,
+        "Volume Breakout": VolumeBreakoutStrategy,
+        "Volatility Expansion": VolatilityExpansionStrategy,
+        "Regime Adaptive": RegimeAdaptiveStrategy,
+    }
+    bt_strategy_name = st.selectbox("Strategy", list(strategy_options.keys()), key="bt_strategy")
     bt_days = st.slider("Backtest period (days)", 90, 730, 365, key="bt_days")
     bt_capital = st.number_input("Starting capital (Rs)", value=100000.0, step=10000.0, key="bt_capital")
 
     if st.button("Run backtest"):
-        with st.spinner("Running backtest..."):
+        with st.spinner(f"Running backtest ({bt_strategy_name})..."):
             try:
                 end_date = datetime.now()
                 start_date = end_date - timedelta(days=bt_days)
                 bt_engine = BacktestEngine(ChargeModel())
-                bt_result = bt_engine.run(bt_symbol, start_date, end_date, capital=bt_capital)
+                selected_strategy = strategy_options[bt_strategy_name]()
+                bt_result = bt_engine.run(
+                    bt_symbol, start_date, end_date, capital=bt_capital, strategy=selected_strategy
+                )
 
                 perf_calc = PerformanceCalculator()
                 summary = perf_calc.summarize(bt_result.trades, starting_capital=bt_capital)
@@ -438,14 +453,14 @@ with tab_backtest:
                     st.dataframe(trades_df)
 
                     health_monitor = StrategyHealthMonitor()
-                    health = health_monitor.assess("momentum", bt_result.trades, min_trades=6)
+                    health = health_monitor.assess(bt_strategy_name.lower().replace(" ", "_"), bt_result.trades, min_trades=6)
                     st.write(f"**Strategy health:** {health.notes}")
                     if health.historical_win_rate or health.recent_win_rate:
                         hc1, hc2 = st.columns(2)
                         hc1.metric("Recent win rate", f"{health.recent_win_rate * 100:.1f}%")
                         hc2.metric("Historical win rate", f"{health.historical_win_rate * 100:.1f}%")
                 else:
-                    st.info("No trades in this window — momentum only enters during bull-favorable regimes.")
+                    st.info(f"No trades in this window — {bt_strategy_name} did not find a qualifying entry.")
             except Exception as e:
                 st.error(f"Backtest failed: {e}")
 
