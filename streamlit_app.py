@@ -488,6 +488,23 @@ with tab_backtest:
                     trades_df = pd.DataFrame([t.__dict__ for t in bt_result.trades])
                     st.dataframe(trades_df)
 
+                    st.write("**Performance by market regime (at entry):**")
+                    regime_groups = {}
+                    for t in bt_result.trades:
+                        key = t.entry_regime or "UNKNOWN"
+                        regime_groups.setdefault(key, []).append(t.net_pnl)
+                    regime_rows = []
+                    for regime_name, pnls in regime_groups.items():
+                        wins = sum(1 for p in pnls if p > 0)
+                        regime_rows.append({
+                            "regime": regime_name,
+                            "trades": len(pnls),
+                            "net_pnl": round(sum(pnls), 2),
+                            "win_rate_%": round(wins / len(pnls) * 100, 1) if pnls else 0.0,
+                        })
+                    st.dataframe(pd.DataFrame(regime_rows).sort_values("trades", ascending=False))
+                    st.caption("A strategy that only wins in one regime is a strategy that only works in one regime — this table exists to make that visible, not to hide it.")
+
                     health_monitor = StrategyHealthMonitor()
                     health = health_monitor.assess(bt_strategy_name.lower().replace(" ", "_"), bt_result.trades, min_trades=6)
                     st.write(f"**Strategy health:** {health.notes}")
