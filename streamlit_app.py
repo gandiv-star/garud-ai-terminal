@@ -22,7 +22,6 @@ from regime.regime_engine import RegimeEngine
 from risk.position_sizing import SizingInput, calculate_quantity
 from risk.risk_engine import RiskEngine, TradeProposal
 from risk.stop_loss import calculate_atr_stop
-from safety.daily_loss_limit import DailyLossState
 from scoring.ai_scoring_engine import AIScoringEngine
 from sector.sector_analysis import SECTOR_STOCKS, SectorAnalysisEngine
 from strategies.breakout import BreakoutStrategy
@@ -37,7 +36,6 @@ from strategies.volume_breakout import VolumeBreakoutStrategy
 st.set_page_config(page_title="Garud AI Terminal", layout="wide")
 
 settings = load_settings()
-REFERENCE_CAPITAL = 100000.0
 
 st.title("Garud AI Terminal")
 st.caption("Skeleton-stage dashboard — shows what's actually built so far")
@@ -61,37 +59,11 @@ else:
 if st.session_state["kill_switch_engaged"]:
     st.error("Kill switch is TRIGGERED — all new trade actions below are blocked until manually reset.")
 
-daily_loss_triggered = False
-try:
-    _db = Database(settings)
-    _db.connect()
-    _all_trades = _db.get_trades(limit=200)
-    _today = datetime.now(timezone.utc).date()
-    _today_realized = sum(
-        t.realized_pnl for t in _all_trades
-        if t.exit_timestamp is not None and t.exit_timestamp.date() == _today and t.realized_pnl is not None
-    )
-    _today_realized_pct = (_today_realized / REFERENCE_CAPITAL) * 100
-    daily_loss_state = DailyLossState(
-        realized_pnl_pct=_today_realized_pct, unrealized_pnl_pct=0.0,
-        limit_pct=settings.risk.max_daily_loss_pct,
-    )
-    daily_loss_triggered = daily_loss_state.check()
-
-    dl1, dl2 = st.columns(2)
-    dl1.metric("Today's realized P&L", f"Rs.{_today_realized:.2f} ({_today_realized_pct:.2f}%)")
-    dl2.metric("Daily loss limit", f"{settings.risk.max_daily_loss_pct}%")
-    if daily_loss_triggered:
-        st.error(f"Daily loss limit breached ({_today_realized_pct:.2f}% <= -{settings.risk.max_daily_loss_pct}%) — new trade actions blocked for today.")
-except Exception as e:
-    st.warning(f"Could not compute daily loss state: {e}")
-
 st.divider()
 st.subheader("Full analysis: Data -> Regime -> Strategies -> Score -> Risk -> Explanation")
 fa_symbol = st.text_input("NSE symbol", value="RELIANCE", key="full_analysis_symbol")
 fa_sector = st.text_input("Sector", value="Energy", key="full_analysis_sector")
 fa_capital = st.number_input("Available capital (Rs)", value=100000.0, step=10000.0)
-fa_open_positions = st.number_input("Current open positions", value=0, min_value=0, max_value=20, step=1)
 fa_force_buy = st.checkbox("Force BUY for testing (bypasses real signal — not a real trade decision)")
 
 if st.button("Run full analysis"):
@@ -143,13 +115,34 @@ if st.button("Run full analysis"):
                     symbol=fa_symbol, quantity=quantity, entry_price=features.price,
                     stop_price=stop_result.stop_price, sector=fa_sector,
                 )
+
+                db_for_risk = Database(settings)
+                db_for_risk.connect()
+                all_trades_for_risk = db_for_risk.get_trades(limit=200)
+                closed_for_risk = [t for t in all_trades_for_risk if t.exit_price is not None]
+                open_for_risk = [t for t in all_trades_for_risk if t.exit_price is None]
+
+                today = datetime.now(timezone.utc).date()
+                today_pnl = sum(
+                    t.realized_pnl for t in closed_for_risk
+                    if t.exit_timestamp is not None and t.exit_timestamp.date() == today
+                )
+                real_daily_pnl_pct = (today_pnl / fa_capital) * 100 if fa_capital > 0 else 0.0
+
+                sector_value = sum(t.entry_price * t.quantity for t in open_for_risk if t.sector == fa_sector)
+                real_sector_exposure_pct = (sector_value / fa_capital) * 100 if fa_capital > 0 else 0.0
+
                 risk_engine = RiskEngine(settings.risk)
                 verdict = risk_engine.evaluate(
-                    proposal=proposal, available_capital=fa_capital, current_daily_pnl_pct=_today_realized_pct if 'daily_loss_triggered' in dir() else 0.0,
-                    current_portfolio_drawdown_pct=0.0, current_sector_exposure_pct=0.0,
-                    open_position_count=fa_open_positions,
+                    proposal=proposal, available_capital=fa_capital, current_daily_pnl_pct=real_daily_pnl_pct,
+                    current_portfolio_drawdown_pct=0.0, current_sector_exposure_pct=real_sector_exposure_pct,
+                    open_position_count=len(open_for_risk),
                 )
-                result.update({"stop_price": stop_result.stop_price, "quantity": quantity, "verdict": verdict})
+                result.update({
+                    "stop_price": stop_result.stop_price, "quantity": quantity, "verdict": verdict,
+                    "real_daily_pnl_pct": real_daily_pnl_pct, "real_sector_exposure_pct": real_sector_exposure_pct,
+                    "open_position_count": len(open_for_risk),
+                })
 
             st.session_state["last_analysis"] = result
         except Exception as e:
@@ -173,6 +166,12 @@ if "last_analysis" in st.session_state:
         c3.metric("Entry", f"{r['features'].price:.2f}")
         c4.metric("Stop", f"{r['stop_price']:.2f}")
         c5.metric("Quantity", r["quantity"])
+
+        st.write("**Real risk inputs used (from your paper-trade history):**")
+        c6, c7, c8 = st.columns(3)
+        c6.metric("Today's P&L", f"{r['real_daily_pnl_pct']:.2f}%")
+        c7.metric(f"{r['sector']} exposure", f"{r['real_sector_exposure_pct']:.2f}%")
+        c8.metric("Open positions", r["open_position_count"])
 
         if r["verdict"].approved:
             st.success(f"Risk Engine: APPROVED")
@@ -198,8 +197,6 @@ if "last_analysis" in st.session_state:
         can_log = settings.trading_mode.value != "BACKTEST"
         if st.session_state.get("kill_switch_engaged"):
             st.warning("Kill switch is triggered — logging blocked.")
-        elif daily_loss_triggered:
-            st.warning("Daily loss limit breached — logging blocked for today.")
         elif not can_log:
             st.info("Mode is BACKTEST — switch TRADING_MODE to PAPER to log trades.")
         elif r["overall_decision"] != Decision.NO_TRADE and r["verdict"].approved:
@@ -312,8 +309,6 @@ try:
                 if oc5.button("Close at current price", key=f"close_{t.internal_order_id}"):
                     if st.session_state.get("kill_switch_engaged"):
                         st.warning("Kill switch is triggered — cannot close positions.")
-                    elif daily_loss_triggered:
-                        st.warning("Daily loss limit breached — position closing blocked for today.")
                     else:
                         try:
                             loader = YFinanceLoader()
@@ -414,4 +409,6 @@ if st.button("Run backtest"):
                     hc1, hc2 = st.columns(2)
                     hc1.metric("Recent win rate", f"{health.recent_win_rate * 100:.1f}%")
                     hc2.metric("Historical win rate", f"{health.historical_win_rate * 100:.1f}%")
-        
+            else:
+                st.info("No trades in this window — momentum only enters during bull-favorable regimes.")
+        ex
