@@ -16,12 +16,14 @@ from database.db import Database
 from database.models import TradeRecord
 from features.feature_engine import FeatureEngine
 from llm.explainability import ExplainabilityEngine
+from portfolio.correlation_engine import CorrelationEngine
+from portfolio.portfolio_engine import PortfolioEngine
 from regime.regime_engine import RegimeEngine
 from risk.position_sizing import SizingInput, calculate_quantity
 from risk.risk_engine import RiskEngine, TradeProposal
 from risk.stop_loss import calculate_atr_stop
 from scoring.ai_scoring_engine import AIScoringEngine
-from sector.sector_analysis import SectorAnalysisEngine
+from sector.sector_analysis import SECTOR_STOCKS, SectorAnalysisEngine
 from strategies.breakout import BreakoutStrategy
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
@@ -197,6 +199,70 @@ if "last_analysis" in st.session_state:
                     st.error(f"Logging failed: {e}")
 
 st.divider()
+st.subheader("Stock scanner + portfolio selection")
+st.caption("Scans a small universe, scores each, then Portfolio Engine picks the best combination under sector/correlation limits.")
+default_universe = "HDFCBANK,TCS,SUNPHARMA,MARUTI,TATASTEEL,HINDUNILVR,RELIANCE,DLF"
+scan_universe_input = st.text_input("Universe (comma-separated NSE symbols)", value=default_universe)
+scan_open_positions_input = st.text_input("Existing open position symbols (comma-separated, optional)", value="")
+scan_max_sector_pct = st.number_input("Max sector exposure %", value=settings.risk.max_sector_exposure_pct, key="scan_max_sector")
+
+symbol_to_sector = {sym: sector for sector, syms in SECTOR_STOCKS.items() for sym in syms}
+
+if st.button("Scan universe"):
+    with st.spinner("Scanning (this can take a little while)..."):
+        try:
+            symbols = [s.strip().upper() for s in scan_universe_input.split(",") if s.strip()]
+            open_positions_list = [s.strip().upper() for s in scan_open_positions_input.split(",") if s.strip()]
+
+            regime_engine = RegimeEngine()
+            regime = regime_engine.detect()
+            st.write(f"Regime: **{regime.regime.value}**")
+
+            strategies = [
+                MomentumStrategy(), BreakoutStrategy(), TrendFollowingStrategy(),
+                MeanReversionStrategy(), RelativeStrengthStrategy(), VolumeBreakoutStrategy(),
+                VolatilityExpansionStrategy(), RegimeAdaptiveStrategy(),
+            ]
+            scorer = AIScoringEngine()
+            loader = YFinanceLoader()
+            fe = FeatureEngine()
+
+            candidates = []
+            end = datetime.now()
+            start = end - timedelta(days=60)
+            for sym in symbols:
+                try:
+                    bars = loader.get_historical_bars(sym, start, end)
+                    features = fe.compute(sym, bars)
+                    signals = [s.evaluate(sym, features, regime) for s in strategies]
+                    candidate = scorer.score(sym, signals)
+                    candidates.append(candidate)
+                except Exception as sym_e:
+                    st.warning(f"{sym}: skipped ({sym_e})")
+
+            if not candidates:
+                st.info("No candidates scored.")
+            else:
+                scan_df = pd.DataFrame(
+                    [{"symbol": c.symbol, "sector": symbol_to_sector.get(c.symbol, "Unknown"), "score": c.score} for c in candidates]
+                ).sort_values("score", ascending=False)
+                st.write("**Scored candidates (all):**")
+                st.dataframe(scan_df)
+
+                corr_engine = CorrelationEngine()
+                portfolio_engine = PortfolioEngine(corr_engine, max_correlation=0.8)
+                decision = portfolio_engine.select(
+                    candidates=candidates, open_positions=open_positions_list,
+                    sector_by_symbol=symbol_to_sector, max_sector_exposure_pct=scan_max_sector_pct,
+                )
+                st.write("**Portfolio Engine — accepted:**")
+                st.write(decision.accepted_symbols if decision.accepted_symbols else "(none)")
+                st.write("**Portfolio Engine — rejected (with reason):**")
+                st.json(decision.rejected_symbols)
+        except Exception as e:
+            st.error(f"Scan failed: {e}")
+
+st.divider()
 st.subheader("Open paper positions")
 try:
     db = Database(settings)
@@ -355,23 +421,4 @@ if st.button("Rank sectors (1 month)"):
 
 st.divider()
 st.subheader("Fetch historical data")
-symbol = st.text_input("NSE symbol", value="RELIANCE", key="fetch_symbol")
-days = st.slider("Days of history", 5, 90, 30)
-if st.button("Fetch data"):
-    with st.spinner(f"Fetching {symbol}..."):
-        try:
-            loader = YFinanceLoader()
-            validator = DataValidator()
-            end = datetime.now()
-            start = end - timedelta(days=days)
-            bars = loader.get_historical_bars(symbol, start, end)
-            result = validator.validate_bars(symbol, bars)
-            st.write(f"Fetched {len(bars)} bars. Valid: {result.is_valid}")
-            if result.issues:
-                st.warning(result.issues)
-            if bars:
-                df = pd.DataFrame([{"date": b.timestamp.date(), "close": b.close, "volume": b.volume} for b in bars])
-                st.line_chart(df.set_index("date")["close"])
-                st.dataframe(df)
-        except Exception as e:
-            st.error(f"Fetch failed: {e}")
+symbol
