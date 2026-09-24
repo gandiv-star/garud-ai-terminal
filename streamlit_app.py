@@ -22,6 +22,7 @@ from regime.regime_engine import RegimeEngine
 from risk.position_sizing import SizingInput, calculate_quantity
 from risk.risk_engine import RiskEngine, TradeProposal
 from risk.stop_loss import calculate_atr_stop
+from safety.daily_loss_limit import DailyLossState
 from scoring.ai_scoring_engine import AIScoringEngine
 from sector.sector_analysis import SECTOR_STOCKS, SectorAnalysisEngine
 from strategies.breakout import BreakoutStrategy
@@ -36,6 +37,7 @@ from strategies.volume_breakout import VolumeBreakoutStrategy
 st.set_page_config(page_title="Garud AI Terminal", layout="wide")
 
 settings = load_settings()
+REFERENCE_CAPITAL = 100000.0
 
 st.title("Garud AI Terminal")
 st.caption("Skeleton-stage dashboard — shows what's actually built so far")
@@ -58,6 +60,31 @@ else:
 
 if st.session_state["kill_switch_engaged"]:
     st.error("Kill switch is TRIGGERED — all new trade actions below are blocked until manually reset.")
+
+daily_loss_triggered = False
+try:
+    _db = Database(settings)
+    _db.connect()
+    _all_trades = _db.get_trades(limit=200)
+    _today = datetime.now(timezone.utc).date()
+    _today_realized = sum(
+        t.realized_pnl for t in _all_trades
+        if t.exit_timestamp is not None and t.exit_timestamp.date() == _today and t.realized_pnl is not None
+    )
+    _today_realized_pct = (_today_realized / REFERENCE_CAPITAL) * 100
+    daily_loss_state = DailyLossState(
+        realized_pnl_pct=_today_realized_pct, unrealized_pnl_pct=0.0,
+        limit_pct=settings.risk.max_daily_loss_pct,
+    )
+    daily_loss_triggered = daily_loss_state.check()
+
+    dl1, dl2 = st.columns(2)
+    dl1.metric("Today's realized P&L", f"Rs.{_today_realized:.2f} ({_today_realized_pct:.2f}%)")
+    dl2.metric("Daily loss limit", f"{settings.risk.max_daily_loss_pct}%")
+    if daily_loss_triggered:
+        st.error(f"Daily loss limit breached ({_today_realized_pct:.2f}% <= -{settings.risk.max_daily_loss_pct}%) — new trade actions blocked for today.")
+except Exception as e:
+    st.warning(f"Could not compute daily loss state: {e}")
 
 st.divider()
 st.subheader("Full analysis: Data -> Regime -> Strategies -> Score -> Risk -> Explanation")
@@ -118,7 +145,7 @@ if st.button("Run full analysis"):
                 )
                 risk_engine = RiskEngine(settings.risk)
                 verdict = risk_engine.evaluate(
-                    proposal=proposal, available_capital=fa_capital, current_daily_pnl_pct=0.0,
+                    proposal=proposal, available_capital=fa_capital, current_daily_pnl_pct=_today_realized_pct if 'daily_loss_triggered' in dir() else 0.0,
                     current_portfolio_drawdown_pct=0.0, current_sector_exposure_pct=0.0,
                     open_position_count=fa_open_positions,
                 )
@@ -171,6 +198,8 @@ if "last_analysis" in st.session_state:
         can_log = settings.trading_mode.value != "BACKTEST"
         if st.session_state.get("kill_switch_engaged"):
             st.warning("Kill switch is triggered — logging blocked.")
+        elif daily_loss_triggered:
+            st.warning("Daily loss limit breached — logging blocked for today.")
         elif not can_log:
             st.info("Mode is BACKTEST — switch TRADING_MODE to PAPER to log trades.")
         elif r["overall_decision"] != Decision.NO_TRADE and r["verdict"].approved:
@@ -283,6 +312,8 @@ try:
                 if oc5.button("Close at current price", key=f"close_{t.internal_order_id}"):
                     if st.session_state.get("kill_switch_engaged"):
                         st.warning("Kill switch is triggered — cannot close positions.")
+                    elif daily_loss_triggered:
+                        st.warning("Daily loss limit breached — position closing blocked for today.")
                     else:
                         try:
                             loader = YFinanceLoader()
@@ -383,42 +414,4 @@ if st.button("Run backtest"):
                     hc1, hc2 = st.columns(2)
                     hc1.metric("Recent win rate", f"{health.recent_win_rate * 100:.1f}%")
                     hc2.metric("Historical win rate", f"{health.historical_win_rate * 100:.1f}%")
-            else:
-                st.info("No trades in this window — momentum only enters during bull-favorable regimes.")
-        except Exception as e:
-            st.error(f"Backtest failed: {e}")
-
-st.divider()
-st.subheader("Market regime (NIFTY)")
-if st.button("Detect current regime"):
-    with st.spinner("Fetching NIFTY data..."):
-        try:
-            engine = RegimeEngine()
-            assessment = engine.detect()
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Regime", assessment.regime.value)
-            c2.metric("Confidence", f"{assessment.confidence:.2f}")
-            c3.metric("Risk level", assessment.risk_level.value)
-            st.json(assessment.supporting_features)
-        except Exception as e:
-            st.error(f"Regime detection failed: {e}")
-
-st.divider()
-st.subheader("Sector strength")
-if st.button("Rank sectors (1 month)"):
-    with st.spinner("Fetching sector stocks..."):
-        try:
-            sector_engine = SectorAnalysisEngine()
-            rankings = sector_engine.rank_sectors()
-            df = pd.DataFrame(
-                [{"sector": r.sector, "sector_return_%": r.sector_return, "index_return_%": r.index_return,
-                  "relative_strength": round(r.relative_strength, 2)} for r in rankings]
-            )
-            st.bar_chart(df.set_index("sector")["relative_strength"])
-            st.dataframe(df)
-        except Exception as e:
-            st.error(f"Sector ranking failed: {e}")
-
-st.divider()
-st.subheader("Fetch historical data")
-symbol
+        
