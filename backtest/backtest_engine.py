@@ -49,6 +49,7 @@ class TradeRecord:
     charges: float
     net_pnl: float
     exit_reason: str
+    entry_regime: str = ""
 
 
 @dataclass
@@ -144,6 +145,7 @@ class BacktestEngine:
                                 "stop_price": stop_price,
                                 "quantity": quantity,
                                 "entry_date": entry_bar.timestamp,
+                                "entry_regime": regime.regime.value,
                             }
             else:
                 current_bar = bars[i]
@@ -175,6 +177,7 @@ class BacktestEngine:
                             charges=round(charges, 2),
                             net_pnl=round(net_pnl, 2),
                             exit_reason=exit_reason,
+                            entry_regime=position.get("entry_regime", ""),
                         )
                     )
                     position = None
@@ -190,4 +193,3 @@ class BacktestEngine:
             trade_count=len(trades),
             trades=trades,
         )
-        
