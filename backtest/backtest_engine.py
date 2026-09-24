@@ -7,23 +7,18 @@ from core.constants import Decision, MarketRegime, RiskLevel
 from data.yfinance_loader import YFinanceLoader
 from features.feature_engine import FeatureEngine
 from regime.regime_engine import RegimeAssessment
+from strategies.base_strategy import BaseStrategy
 from strategies.momentum import MomentumStrategy
 
 
 @dataclass
 class ChargeModel:
-    """
-    Delivery-equity charges, NSE cash segment. Rates verified as of build
-    time (brokerage=0 assumes a zero-brokerage delivery account like most
-    discount brokers) — re-verify against current broker/exchange circulars
-    before trusting absolute backtest P&L numbers.
-    """
     brokerage_flat: float = 0.0
     brokerage_pct: float = 0.0
-    stt_pct: float = 0.1              # both buy and sell, delivery
-    exchange_charges_pct: float = 0.00297   # NSE cash, per side
-    stamp_duty_pct: float = 0.015     # buy side only
-    sebi_charges_pct: float = 0.0001  # per side
+    stt_pct: float = 0.1
+    exchange_charges_pct: float = 0.00297
+    stamp_duty_pct: float = 0.015
+    sebi_charges_pct: float = 0.0001
 
     def buy_charges(self, turnover: float) -> float:
         brokerage = self.brokerage_flat + turnover * (self.brokerage_pct / 100)
@@ -72,8 +67,6 @@ def _nifty_closes(start: datetime, end: datetime) -> list[float]:
 
 
 def _regime_at(closes_so_far: list[float]) -> RegimeAssessment:
-    # Point-in-time regime approximation (RegimeEngine itself only supports
-    # "current" data) — same thresholds as regime/regime_engine.py.
     if len(closes_so_far) < 200:
         return RegimeAssessment(regime=MarketRegime.SIDEWAYS, confidence=0.0, risk_level=RiskLevel.MODERATE)
     price = closes_so_far[-1]
@@ -95,14 +88,6 @@ def _regime_at(closes_so_far: list[float]) -> RegimeAssessment:
 
 
 class BacktestEngine:
-    """
-    V1: single-strategy (Momentum), single-symbol backtest. No look-ahead —
-    day i's decision only ever uses bars[:i+1]; entry executes at day i+1's
-    open. Walk-forward window validation (testing across separate
-    train/validate/out-of-sample periods) is a separate, later feature —
-    see docs/ARCHITECTURE.md.
-    """
-
     def __init__(self, charge_model: ChargeModel):
         self.charge_model = charge_model
 
@@ -115,6 +100,7 @@ class BacktestEngine:
         max_holding_days: int = 10,
         stop_atr_multiplier: float = 2.0,
         risk_pct_per_trade: float = 1.0,
+        strategy: BaseStrategy | None = None,
     ) -> BacktestResult:
         loader = YFinanceLoader()
         lookback_start = start_date - timedelta(days=400)
@@ -122,7 +108,8 @@ class BacktestEngine:
         nifty_closes = _nifty_closes(lookback_start, end_date)
 
         fe = FeatureEngine()
-        strategy = MomentumStrategy()
+        if strategy is None:
+            strategy = MomentumStrategy()
 
         trades: list[TradeRecord] = []
         position = None
@@ -135,8 +122,6 @@ class BacktestEngine:
 
         for i in range(start_idx, len(bars)):
             bars_so_far = bars[: i + 1]
-            # Approximation: NIFTY and the symbol's bar indices are assumed
-            # to align day-for-day (both trade on the NSE calendar).
             nifty_so_far = nifty_closes[: i + 1] if i < len(nifty_closes) else nifty_closes
 
             if position is None:
