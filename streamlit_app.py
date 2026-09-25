@@ -8,6 +8,7 @@ from analytics.performance_metrics import PerformanceCalculator
 from analytics.strategy_health import StrategyHealthMonitor
 from audit.audit_trail import AuditTrail
 from backtest.backtest_engine import BacktestEngine, ChargeModel
+from backtest.walk_forward import WalkForwardValidator
 from config.settings import load_settings
 from core.constants import Decision
 from data.data_validator import DataValidator
@@ -591,6 +592,51 @@ with tab_backtest:
                     st.info(f"No trades in this window — {bt_strategy_name} did not find a qualifying entry.")
             except Exception as e:
                 st.error(f"Backtest failed: {e}")
+
+    st.divider()
+    st.subheader("Walk-forward (rolling out-of-sample windows)")
+    st.caption(
+        "Since these strategies use fixed thresholds rather than fitted parameters, there's nothing to "
+        "'train' — this instead re-runs the backtest independently on sequential, non-overlapping time "
+        "windows, so you can see whether performance holds up across different periods or was a fluke of one."
+    )
+    wf_symbol = st.text_input("NSE symbol", value="RELIANCE", key="wf_symbol")
+    wf_strategy_name = st.selectbox("Strategy", list(strategy_options.keys()), key="wf_strategy")
+    wf_total_days = st.slider("Total lookback (days)", 180, 1460, 730, key="wf_total_days")
+    wf_window_days = st.slider("Each window's size (days)", 30, 180, 90, key="wf_window_days")
+
+    if st.button("Run walk-forward"):
+        with st.spinner("Running walk-forward windows..."):
+            try:
+                wf_end = datetime.now()
+                wf_start = wf_end - timedelta(days=wf_total_days)
+                validator = WalkForwardValidator()
+                windows = validator.generate_windows(wf_start, wf_end, oos_days=wf_window_days)
+                if not windows:
+                    st.info("Lookback period too short for even one full window — widen it or shrink the window size.")
+                else:
+                    wf_engine = BacktestEngine(ChargeModel())
+                    wf_strategy = strategy_options[wf_strategy_name]()
+                    wf_results = validator.run(
+                        wf_symbol, strategy=wf_strategy, backtest_engine=wf_engine, windows=windows
+                    )
+                    wf_df = pd.DataFrame([
+                        {
+                            "window": f"{r['window_start'].date()} to {r['window_end'].date()}",
+                            "trades": r["trades"],
+                            "net_pnl": r["net_pnl"],
+                        }
+                        for r in wf_results
+                    ])
+                    st.dataframe(wf_df)
+
+                    positive_windows = sum(1 for r in wf_results if r["net_pnl"] > 0)
+                    st.write(
+                        f"**{positive_windows} of {len(wf_results)} windows were net positive.** "
+                        "A strategy that's only positive in one window is not yet trustworthy across time."
+                    )
+            except Exception as e:
+                st.error(f"Walk-forward failed: {e}")
 
 with tab_market:
     st.subheader("Market regime (NIFTY)")
