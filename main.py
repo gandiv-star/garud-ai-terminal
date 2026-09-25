@@ -1,21 +1,18 @@
-from security.secrets_manager import SecretsManager
+from llm.ai_reasoning import AIReasoningEngine
 
-print("--- Diagnostic: is the token being read correctly (masked, safe to share) ---")
+print("--- Verify: AI Reasoning Engine (Gemini) ---")
 try:
-    token = SecretsManager.get("BROKER_ACCESS_TOKEN")
-    print(f"Token length: {len(token)}")
-    print(f"Starts with: {token[:6]}...")
-    print(f"Ends with: ...{token[-4:]}")
-    print(f"Has leading/trailing whitespace: {token != token.strip()}")
-except Exception as e:
-    print(f"FAILED: {e}")
-
-print("\n--- Retry funds call with explicit error body ---")
-try:
-    import requests
-    headers = {"Accept": "application/json", "Authorization": f"Bearer {token.strip()}"}
-    response = requests.get("https://api.upstox.com/v2/user/get-funds-and-margin", headers=headers)
-    print(f"Status: {response.status_code}")
-    print(f"Body: {response.text}")
+    engine = AIReasoningEngine()
+    result = engine.explain_market_context(
+        symbol="RELIANCE",
+        regime="WEAK_BEAR",
+        regime_confidence=0.51,
+        risk_level="HIGH",
+        ai_score=50.0,
+        strategy_summary="0 of 7 strategies voted BUY; all NO_TRADE.",
+        risk_verdict_summary="APPROVED (no hard limits breached).",
+    )
+    print("Result:")
+    print(result)
 except Exception as e:
     print(f"FAILED: {e}")
