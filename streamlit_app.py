@@ -100,6 +100,7 @@ with tab_analysis:
                 sector_engine_local = SectorAnalysisEngine()
                 sector_strength = None
                 sector_adjustment = 0.0
+                sector_fetch_error = None
                 try:
                     sector_strength = sector_engine_local.single_sector_strength(actual_sector)
                     if sector_strength is not None:
@@ -108,8 +109,8 @@ with tab_analysis:
                             sector_adjustment = 5.0
                         elif rel < -2:
                             sector_adjustment = -5.0
-                except Exception:
-                    pass
+                except Exception as e:
+                    sector_fetch_error = str(e)
                 sector_adjusted_score = max(0.0, min(100.0, candidate.score + sector_adjustment))
 
                 overall_decision = Decision.NO_TRADE
@@ -125,7 +126,7 @@ with tab_analysis:
                     "regime": regime, "signals": signals, "candidate": candidate,
                     "overall_decision": overall_decision,
                     "sector_strength": sector_strength, "sector_adjustment": sector_adjustment,
-                    "sector_adjusted_score": sector_adjusted_score,
+                    "sector_adjusted_score": sector_adjusted_score, "sector_fetch_error": sector_fetch_error,
                 }
 
                 if features.price is not None and features.atr is not None:
@@ -196,6 +197,8 @@ with tab_analysis:
                 f"{r['sector']} sector: {ss.sector_return}% vs NIFTY {ss.index_return}% "
                 f"(relative strength {ss.relative_strength:+.2f}) — one factor among several, not an absolute rule."
             )
+        elif r.get("sector_fetch_error"):
+            st.caption(f"(Sector data unavailable: {r['sector_fetch_error']})")
 
         st.write("**Strategy signals:**")
         sig_df = pd.DataFrame(
