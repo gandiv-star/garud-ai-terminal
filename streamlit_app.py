@@ -78,8 +78,8 @@ else:
 if st.session_state["kill_switch_engaged"]:
     st.error("Kill switch is TRIGGERED — all new trade actions below are blocked until manually reset.")
 
-tab_analysis, tab_scanner, tab_positions, tab_backtest, tab_market = st.tabs(
-    ["Analysis", "Scanner", "Positions", "Backtest", "Market Data"]
+tab_analysis, tab_scanner, tab_positions, tab_backtest, tab_market, tab_risk = st.tabs(
+    ["Analysis", "Scanner", "Positions", "Backtest", "Market Data", "Risk Center"]
 )
 
 with tab_analysis:
@@ -755,3 +755,87 @@ with tab_market:
                     st.dataframe(df)
             except Exception as e:
                 st.error(f"Fetch failed: {e}")
+
+with tab_risk:
+    st.subheader("Risk Center")
+    st.caption("Live risk posture across your paper-trade history, checked against your configured limits.")
+
+    try:
+        db_rc = Database(settings)
+        db_rc.connect()
+        all_trades_rc = db_rc.get_trades(limit=200)
+        closed_rc = [t for t in all_trades_rc if t.exit_price is not None]
+        open_rc = [t for t in all_trades_rc if t.exit_price is None]
+
+        rc_capital = st.number_input("Reference capital (Rs)", value=100000.0, step=10000.0, key="rc_capital")
+
+        today_rc = datetime.now(timezone.utc).date()
+        today_pnl_rc = sum(
+            t.realized_pnl for t in closed_rc
+            if t.exit_timestamp is not None and t.exit_timestamp.date() == today_rc
+        )
+        daily_pnl_pct_rc = (today_pnl_rc / rc_capital) * 100 if rc_capital > 0 else 0.0
+
+        sorted_closed_rc = sorted(closed_rc, key=lambda t: t.exit_timestamp)
+        equity_rc = rc_capital
+        peak_rc = equity_rc
+        for ct in sorted_closed_rc:
+            equity_rc += ct.realized_pnl
+            peak_rc = max(peak_rc, equity_rc)
+        drawdown_pct_rc = (peak_rc - equity_rc) / peak_rc * 100 if peak_rc > 0 else 0.0
+
+        rc1, rc2, rc3 = st.columns(3)
+        rc1.metric("Today's P&L", f"{daily_pnl_pct_rc:.2f}%")
+        rc1.caption(f"Limit: -{settings.risk.max_daily_loss_pct}%")
+        rc2.metric("Portfolio drawdown", f"{drawdown_pct_rc:.2f}%")
+        rc2.caption(f"Limit: {settings.risk.max_portfolio_drawdown_pct}%")
+        rc3.metric("Open positions", len(open_rc))
+        rc3.caption(f"Limit: {settings.risk.max_open_positions}")
+
+        if daily_pnl_pct_rc <= -settings.risk.max_daily_loss_pct:
+            st.error(f"Daily loss limit BREACHED ({daily_pnl_pct_rc:.2f}% vs -{settings.risk.max_daily_loss_pct}% limit)")
+        if drawdown_pct_rc >= settings.risk.max_portfolio_drawdown_pct:
+            st.error(f"Portfolio drawdown limit BREACHED ({drawdown_pct_rc:.2f}% vs {settings.risk.max_portfolio_drawdown_pct}% limit)")
+        if len(open_rc) >= settings.risk.max_open_positions:
+            st.warning(f"At/above max open positions ({len(open_rc)} vs {settings.risk.max_open_positions} limit)")
+
+        st.divider()
+        st.write("**Sector exposure (open positions):**")
+        sector_exposure_rc = {}
+        for t in open_rc:
+            sector_exposure_rc.setdefault(t.sector, 0.0)
+            sector_exposure_rc[t.sector] += t.entry_price * t.quantity
+        if sector_exposure_rc:
+            exp_df = pd.DataFrame([
+                {"sector": s, "exposure_rs": round(v, 2), "exposure_pct": round(v / rc_capital * 100, 2)}
+                for s, v in sector_exposure_rc.items()
+            ]).sort_values("exposure_pct", ascending=False)
+            st.dataframe(exp_df)
+            over_limit = exp_df[exp_df["exposure_pct"] > settings.risk.max_sector_exposure_pct]
+            if not over_limit.empty:
+                st.warning(
+                    f"Sectors over the {settings.risk.max_sector_exposure_pct}% exposure limit: "
+                    f"{', '.join(over_limit['sector'].tolist())}"
+                )
+        else:
+            st.info("No open positions — no sector exposure.")
+
+        st.divider()
+        st.write("**Configured limits:**")
+        limits_df = pd.DataFrame([
+            {"limit": "Max risk per trade", "value": f"{settings.risk.max_risk_per_trade_pct}%"},
+            {"limit": "Max daily loss", "value": f"{settings.risk.max_daily_loss_pct}%"},
+            {"limit": "Max portfolio drawdown", "value": f"{settings.risk.max_portfolio_drawdown_pct}%"},
+            {"limit": "Max open positions", "value": settings.risk.max_open_positions},
+            {"limit": "Max sector exposure", "value": f"{settings.risk.max_sector_exposure_pct}%"},
+        ])
+        st.dataframe(limits_df)
+
+        st.divider()
+        st.write("**Kill switch:**")
+        if st.session_state.get("kill_switch_engaged"):
+            st.error("TRIGGERED — all new trade actions are blocked.")
+        else:
+            st.success("Not triggered.")
+    except Exception as e:
+        st.error(f"Risk Center failed: {e}")
