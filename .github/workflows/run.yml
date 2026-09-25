@@ -16,4 +16,5 @@ jobs:
       - name: Run main.py
         env:
           BROKER_ACCESS_TOKEN: ${{ secrets.BROKER_ACCESS_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python main.py
