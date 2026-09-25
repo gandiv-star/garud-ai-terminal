@@ -40,6 +40,22 @@ st.set_page_config(page_title="Garud AI Terminal", layout="wide")
 
 settings = load_settings()
 
+# Regime -> strategy-family suitability guide (Final Master Command's
+# "AI Strategy Orchestrator" concept). This is general domain guidance,
+# not a hard rule and not symbol-specific data — it never overrides the
+# actual strategy votes, AI score, or Risk Engine verdict; it's shown
+# alongside them purely as orchestration context. Unrecognized regime
+# values fall back to an empty guide rather than crashing.
+STRATEGY_FAMILY_GUIDE = {
+    "STRONG_BULL": {"favor": ["Momentum", "Breakout", "Trend Following"], "avoid": ["Mean Reversion"]},
+    "MODERATE_BULL": {"favor": ["Momentum", "Breakout", "Trend Following"], "avoid": ["Mean Reversion"]},
+    "WEAK_BULL": {"favor": ["Trend Following", "Relative Strength"], "avoid": []},
+    "SIDEWAYS": {"favor": ["Mean Reversion", "Relative Strength"], "avoid": ["Breakout", "Momentum"]},
+    "WEAK_BEAR": {"favor": ["Mean Reversion"], "avoid": ["Momentum", "Breakout", "Volume Breakout"]},
+    "MODERATE_BEAR": {"favor": [], "avoid": ["Momentum", "Breakout", "Volume Breakout", "Volatility Expansion"]},
+    "STRONG_BEAR": {"favor": [], "avoid": ["Momentum", "Breakout", "Volume Breakout", "Volatility Expansion", "Trend Following"]},
+}
+
 st.title("Garud AI Terminal")
 st.caption("Skeleton-stage dashboard — shows what's actually built so far")
 
@@ -201,6 +217,16 @@ with tab_analysis:
             )
         elif r.get("sector_fetch_error"):
             st.caption(f"(Sector data unavailable: {r['sector_fetch_error']})")
+
+        guide = STRATEGY_FAMILY_GUIDE.get(r["regime"].regime.value)
+        if guide:
+            favor_str = ", ".join(guide["favor"]) if guide["favor"] else "(none especially favored)"
+            avoid_str = ", ".join(guide["avoid"]) if guide["avoid"] else "(none especially avoided)"
+            st.caption(
+                f"**Strategy orchestration guide for {r['regime'].regime.value}:** "
+                f"Favor: {favor_str} | Avoid: {avoid_str} "
+                "— general guidance only, doesn't override the actual votes/score/risk verdict below."
+            )
 
         st.write("**Strategy signals:**")
         sig_df = pd.DataFrame(
