@@ -231,6 +231,7 @@ with tab_analysis:
                 regime=r["regime"], sector=r["sector"], entry_price=r["features"].price,
                 stop_price=r["stop_price"], quantity=r["quantity"],
             )
+            explanation.ai_score = r["sector_adjusted_score"]
             st.write("**Trade explanation:**")
             st.markdown(
                 f"- **Decision:** {explanation.decision.value}\n"
