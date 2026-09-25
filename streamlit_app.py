@@ -554,6 +554,10 @@ with tab_positions:
             c2.metric("Net P&L", f"Rs.{summary.net_pnl}")
             c3.metric("Win rate", f"{summary.win_rate * 100:.1f}%")
             c4.metric("Profit factor", summary.profit_factor)
+            c5, c6 = st.columns(2)
+            c5.metric("Sharpe ratio", summary.sharpe_ratio)
+            c6.metric("Sortino ratio", summary.sortino_ratio)
+            st.caption("Per-trade, not annualized — for comparing strategies/runs against each other, not against published fund Sharpe ratios.")
 
             df = pd.DataFrame([t.__dict__ for t in closed_trades])
             st.dataframe(df)
@@ -602,6 +606,11 @@ with tab_backtest:
                 c5.metric("Profit factor", summary.profit_factor)
                 c6.metric("Expectancy/trade", f"Rs.{summary.expectancy}")
                 c7.metric("Total charges", f"Rs.{bt_result.total_charges}")
+
+                c8, c9 = st.columns(2)
+                c8.metric("Sharpe ratio", summary.sharpe_ratio)
+                c9.metric("Sortino ratio", summary.sortino_ratio)
+                st.caption("Per-trade, not annualized — for comparing strategies/runs against each other, not against published fund Sharpe ratios.")
 
                 if bt_result.trades:
                     trades_df = pd.DataFrame([t.__dict__ for t in bt_result.trades])
