@@ -729,8 +729,29 @@ with tab_market:
                 if result.issues:
                     st.warning(result.issues)
                 if bars:
-                    df = pd.DataFrame([{"date": b.timestamp.date(), "close": b.close, "volume": b.volume} for b in bars])
-                    st.line_chart(df.set_index("date")["close"])
+                    df = pd.DataFrame([
+                        {"date": b.timestamp.date(), "open": b.open, "high": b.high,
+                         "low": b.low, "close": b.close, "volume": b.volume}
+                        for b in bars
+                    ])
+                    try:
+                        import plotly.graph_objects as go
+                        fig = go.Figure(data=[go.Candlestick(
+                            x=df["date"], open=df["open"], high=df["high"],
+                            low=df["low"], close=df["close"],
+                        )])
+                        fig.update_layout(
+                            xaxis_rangeslider_visible=False,
+                            margin=dict(l=10, r=10, t=30, b=10),
+                            height=400,
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    except ImportError:
+                        st.caption(
+                            "(plotly not installed — showing a simple line chart instead. "
+                            "Add 'plotly' to requirements.txt for candlesticks.)"
+                        )
+                        st.line_chart(df.set_index("date")["close"])
                     st.dataframe(df)
             except Exception as e:
                 st.error(f"Fetch failed: {e}")
