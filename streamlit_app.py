@@ -95,18 +95,37 @@ with tab_analysis:
                 scorer = AIScoringEngine()
                 candidate = scorer.score(fa_symbol, signals)
 
+                symbol_to_sector_map = {sym: sec for sec, syms in SECTOR_STOCKS.items() for sym in syms}
+                actual_sector = symbol_to_sector_map.get(fa_symbol, fa_sector)
+                sector_engine_local = SectorAnalysisEngine()
+                sector_strength = None
+                sector_adjustment = 0.0
+                try:
+                    sector_strength = sector_engine_local.single_sector_strength(actual_sector)
+                    if sector_strength is not None:
+                        rel = sector_strength.relative_strength
+                        if rel > 2:
+                            sector_adjustment = 5.0
+                        elif rel < -2:
+                            sector_adjustment = -5.0
+                except Exception:
+                    pass
+                sector_adjusted_score = max(0.0, min(100.0, candidate.score + sector_adjustment))
+
                 overall_decision = Decision.NO_TRADE
-                if candidate.score >= 65:
+                if sector_adjusted_score >= 65:
                     overall_decision = Decision.BUY
-                elif candidate.score <= 35:
+                elif sector_adjusted_score <= 35:
                     overall_decision = Decision.SELL
                 if fa_force_buy:
                     overall_decision = Decision.BUY
 
                 result = {
-                    "symbol": fa_symbol, "sector": fa_sector, "features": features,
+                    "symbol": fa_symbol, "sector": actual_sector, "features": features,
                     "regime": regime, "signals": signals, "candidate": candidate,
                     "overall_decision": overall_decision,
+                    "sector_strength": sector_strength, "sector_adjustment": sector_adjustment,
+                    "sector_adjusted_score": sector_adjusted_score,
                 }
 
                 if features.price is not None and features.atr is not None:
@@ -163,9 +182,20 @@ with tab_analysis:
 
     if "last_analysis" in st.session_state:
         r = st.session_state["last_analysis"]
-        c1, c2 = st.columns(2)
+        c1, c2, c2b = st.columns(3)
         c1.metric("Regime", r["regime"].regime.value)
-        c2.metric("AI Score", f"{r['candidate'].score}/100")
+        c2.metric("Raw AI Score", f"{r['candidate'].score}/100")
+        if r.get("sector_adjustment", 0) != 0:
+            c2b.metric("Sector-adjusted", f"{r['sector_adjusted_score']}/100", delta=f"{r['sector_adjustment']:+.0f}")
+        else:
+            c2b.metric("Sector-adjusted", f"{r['sector_adjusted_score']}/100")
+
+        if r.get("sector_strength") is not None:
+            ss = r["sector_strength"]
+            st.caption(
+                f"{r['sector']} sector: {ss.sector_return}% vs NIFTY {ss.index_return}% "
+                f"(relative strength {ss.relative_strength:+.2f}) — one factor among several, not an absolute rule."
+            )
 
         st.write("**Strategy signals:**")
         sig_df = pd.DataFrame(
@@ -220,7 +250,7 @@ with tab_analysis:
                         regime=r["regime"].regime.value,
                         regime_confidence=r["regime"].confidence,
                         risk_level=r["regime"].risk_level.value,
-                        ai_score=r["candidate"].score,
+                        ai_score=r["sector_adjusted_score"],
                         strategy_summary=strategy_summary,
                         risk_verdict_summary=(
                             "APPROVED" if r["verdict"].approved
@@ -245,7 +275,7 @@ with tab_analysis:
                         trade = TradeRecord(
                             internal_order_id=f"garud-{uuid.uuid4()}", symbol=r["symbol"],
                             strategy_name="composite", strategy_version="0.1.0",
-                            decision=r["overall_decision"].value, ai_score=r["candidate"].score,
+                            decision=r["overall_decision"].value, ai_score=r["sector_adjusted_score"],
                             entry_price=r["features"].price, stop_price=r["stop_price"], target_price=None,
                             quantity=r["quantity"], risk_amount=explanation.risk_amount,
                             regime=r["regime"].regime.value, sector=r["sector"],
@@ -254,7 +284,7 @@ with tab_analysis:
                         db.save_trade(trade)
                         trail.record(
                             symbol=r["symbol"], event_type="PAPER_TRADE_LOGGED",
-                            decision=r["overall_decision"].value, ai_score=r["candidate"].score,
+                            decision=r["overall_decision"].value, ai_score=r["sector_adjusted_score"],
                             reason=explanation.reason,
                         )
                         st.success(f"Paper trade logged: {trade.internal_order_id}")
