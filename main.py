@@ -1,18 +1,18 @@
-from llm.ai_reasoning import AIReasoningEngine
+from llm.news_engine import NewsEngine
 
-print("--- Verify: AI Reasoning Engine (Gemini) ---")
+print("--- Verify: News Engine (yfinance headlines + Gemini summary) ---")
 try:
-    engine = AIReasoningEngine()
-    result = engine.explain_market_context(
-        symbol="RELIANCE",
-        regime="WEAK_BEAR",
-        regime_confidence=0.51,
-        risk_level="HIGH",
-        ai_score=50.0,
-        strategy_summary="0 of 7 strategies voted BUY; all NO_TRADE.",
-        risk_verdict_summary="APPROVED (no hard limits breached).",
-    )
-    print("Result:")
-    print(result)
+    engine = NewsEngine()
+    events = engine.fetch_headlines("RELIANCE", limit=5)
+    print(f"Fetched {len(events)} headlines:")
+    for e in events:
+        print(f"  - [{e.timestamp}] {e.title} ({e.publisher})")
+
+    if events:
+        summary = engine.summarize_with_ai("RELIANCE", events)
+        print("\nAI summary:")
+        print(summary)
+    else:
+        print("No headlines returned — either yfinance's news feed is empty for this symbol, or the parsing needs adjustment.")
 except Exception as e:
     print(f"FAILED: {e}")
