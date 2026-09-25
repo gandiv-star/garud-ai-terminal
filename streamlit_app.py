@@ -18,6 +18,7 @@ from database.models import TradeRecord
 from features.feature_engine import FeatureEngine
 from llm.ai_reasoning import AIReasoningEngine
 from llm.explainability import ExplainabilityEngine
+from llm.news_engine import NewsEngine
 from portfolio.correlation_engine import CorrelationEngine
 from portfolio.portfolio_engine import PortfolioEngine
 from regime.regime_engine import RegimeEngine
@@ -265,6 +266,22 @@ with tab_analysis:
                     st.info(narrative)
                 except Exception as e:
                     st.warning(f"AI narrative unavailable: {e}")
+
+            st.write("**Recent headlines (AI-filtered for noise):**")
+            with st.spinner("Fetching headlines..."):
+                try:
+                    news_engine = NewsEngine()
+                    news_events = news_engine.fetch_headlines(r["symbol"], limit=5)
+                    if not news_events:
+                        st.caption("No recent headlines found.")
+                    else:
+                        for ev in news_events:
+                            ts = ev.timestamp.date() if ev.timestamp else "?"
+                            st.caption(f"[{ts}] {ev.title} ({ev.publisher})")
+                        news_summary = news_engine.summarize_with_ai(r["symbol"], news_events)
+                        st.info(news_summary)
+                except Exception as e:
+                    st.warning(f"News unavailable: {e}")
 
             can_log = settings.trading_mode.value != "BACKTEST"
             if st.session_state.get("kill_switch_engaged"):
