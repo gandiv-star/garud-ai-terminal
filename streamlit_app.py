@@ -15,6 +15,7 @@ from data.yfinance_loader import YFinanceLoader
 from database.db import Database
 from database.models import TradeRecord
 from features.feature_engine import FeatureEngine
+from llm.ai_reasoning import AIReasoningEngine
 from llm.explainability import ExplainabilityEngine
 from portfolio.correlation_engine import CorrelationEngine
 from portfolio.portfolio_engine import PortfolioEngine
@@ -206,6 +207,29 @@ with tab_analysis:
                 f"- **Risk:** Rs.{explanation.risk_amount}\n"
                 f"- **Reason:** {explanation.reason}"
             )
+
+            st.write("**AI market narrative (Gemini):**")
+            with st.spinner("Asking Gemini..."):
+                try:
+                    strategy_summary = ", ".join(
+                        f"{s.strategy_name}={s.decision.value}" for s in r["signals"]
+                    )
+                    reasoning_engine = AIReasoningEngine()
+                    narrative = reasoning_engine.explain_market_context(
+                        symbol=r["symbol"],
+                        regime=r["regime"].regime.value,
+                        regime_confidence=r["regime"].confidence,
+                        risk_level=r["regime"].risk_level.value,
+                        ai_score=r["candidate"].score,
+                        strategy_summary=strategy_summary,
+                        risk_verdict_summary=(
+                            "APPROVED" if r["verdict"].approved
+                            else f"REJECTED: {r['verdict'].rejection_reasons}"
+                        ),
+                    )
+                    st.info(narrative)
+                except Exception as e:
+                    st.warning(f"AI narrative unavailable: {e}")
 
             can_log = settings.trading_mode.value != "BACKTEST"
             if st.session_state.get("kill_switch_engaged"):
