@@ -39,6 +39,11 @@ class AIReasoningEngine:
         except Exception as e:
             return f"(AI reasoning unavailable: {e})"
 
+    def generate_text(self, prompt: str) -> str:
+        """Public wrapper — lets other modules (e.g. NewsEngine) reuse the
+        same Gemini call/error-handling without duplicating it."""
+        return self._call_gemini(prompt)
+
     def explain_market_context(
         self,
         symbol: str,
@@ -62,5 +67,25 @@ class AIReasoningEngine:
             f"Composite AI score: {ai_score}/100\n"
             f"Strategy signals summary: {strategy_summary}\n"
             f"Risk Engine verdict: {risk_verdict_summary}\n"
+        )
+        return self._call_gemini(prompt)
+
+    def explain_portfolio_selection(
+        self,
+        regime: str,
+        accepted: list[str],
+        rejected: dict[str, str],
+        top_scores: str,
+    ) -> str:
+        prompt = (
+            "You are a market-context narrator for a personal Indian equity trading "
+            "dashboard. Using ONLY the exact data below, write a short (3-4 sentence) "
+            "plain-language summary of today's scan results. Do NOT invent any "
+            "numbers, symbols, or facts not given below. Do NOT give financial "
+            "advice or promise any outcome.\n\n"
+            f"Market regime: {regime}\n"
+            f"Top-scored candidates: {top_scores}\n"
+            f"Accepted into portfolio: {', '.join(accepted) if accepted else '(none)'}\n"
+            f"Rejected (with reason): {rejected if rejected else '(none)'}\n"
         )
         return self._call_gemini(prompt)
