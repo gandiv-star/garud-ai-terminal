@@ -32,7 +32,7 @@ class AIReasoningEngine:
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
         try:
-            response = requests.post(GEMINI_URL, headers=headers, json=payload, timeout=20)
+            response = requests.post(GEMINI_URL, headers=headers, json=payload, timeout=45)
             response.raise_for_status()
             data = response.json()
             return data["candidates"][0]["content"]["parts"][0]["text"].strip()
