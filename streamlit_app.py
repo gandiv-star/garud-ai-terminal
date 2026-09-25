@@ -355,6 +355,23 @@ with tab_scanner:
                     st.write(decision.accepted_symbols if decision.accepted_symbols else "(none)")
                     st.write("**Portfolio Engine — rejected (with reason):**")
                     st.json(decision.rejected_symbols)
+
+                    st.write("**AI market narrative (Gemini):**")
+                    with st.spinner("Asking Gemini..."):
+                        try:
+                            top_scores_str = ", ".join(
+                                f"{row['symbol']}={row['score']}" for row in scan_df.head(5).to_dict("records")
+                            )
+                            reasoning_engine = AIReasoningEngine()
+                            narrative = reasoning_engine.explain_portfolio_selection(
+                                regime=regime.regime.value,
+                                accepted=decision.accepted_symbols,
+                                rejected=decision.rejected_symbols,
+                                top_scores=top_scores_str,
+                            )
+                            st.info(narrative)
+                        except Exception as e:
+                            st.warning(f"AI narrative unavailable: {e}")
             except Exception as e:
                 st.error(f"Scan failed: {e}")
 
