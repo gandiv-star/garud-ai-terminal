@@ -89,3 +89,36 @@ class AIReasoningEngine:
             f"Rejected (with reason): {rejected if rejected else '(none)'}\n"
         )
         return self._call_gemini(prompt)
+
+    def propose_strategy_hypothesis(
+        self,
+        regime: str,
+        existing_strategy_names: list[str],
+        sector_context: str = "",
+    ) -> str:
+        """
+        Research-lab stage 1-3 only (Market observation -> Hypothesis ->
+        Strategy idea). This NEVER generates executable code and NEVER
+        gets auto-run or auto-added to the strategy registry — per the
+        project's safety principle, a human must review this text and
+        explicitly ask for it to be built (as real, hand-verified code,
+        the same way every other strategy in this project was built)
+        before it becomes anything runnable. This method's output is
+        text to read, not code to execute.
+        """
+        prompt = (
+            "You are a research assistant for a personal Indian equity trading "
+            "system. Propose ONE new trading strategy hypothesis, different from "
+            "the strategies already in use below. Describe it in plain English "
+            "only — DO NOT write any code. Structure your answer as:\n"
+            "Name: <short name>\n"
+            "Best-suited regime: <regime type>\n"
+            "Entry idea: <plain-English condition>\n"
+            "Exit/stop idea: <plain-English condition>\n"
+            "Rationale: <2-3 sentences, tied to the market context below>\n"
+            "Caveats: <1-2 sentences on when this idea might fail>\n\n"
+            f"Current market regime: {regime}\n"
+            f"Strategies already in use (do not just restate one of these): {', '.join(existing_strategy_names)}\n"
+            f"Sector context: {sector_context or '(none provided)'}\n"
+        )
+        return self._call_gemini(prompt)
