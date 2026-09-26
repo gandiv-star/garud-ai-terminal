@@ -581,6 +581,10 @@ with tab_backtest:
     bt_strategy_name = st.selectbox("Strategy", list(strategy_options.keys()), key="bt_strategy")
     bt_days = st.slider("Backtest period (days)", 90, 730, 365, key="bt_days")
     bt_capital = st.number_input("Starting capital (Rs)", value=100000.0, step=10000.0, key="bt_capital")
+    bt_slippage = st.slider(
+        "Slippage stress-test (%)", 0.0, 1.0, 0.0, step=0.05, key="bt_slippage",
+        help="Simulates worse fills than the ideal price — 0% is the ideal-fill backtest; try 0.2-0.5% to see how much the strategy relies on perfect execution.",
+    )
 
     if st.button("Run backtest"):
         with st.spinner(f"Running backtest ({bt_strategy_name})..."):
@@ -590,7 +594,8 @@ with tab_backtest:
                 bt_engine = BacktestEngine(ChargeModel())
                 selected_strategy = strategy_options[bt_strategy_name]()
                 bt_result = bt_engine.run(
-                    bt_symbol, start_date, end_date, capital=bt_capital, strategy=selected_strategy
+                    bt_symbol, start_date, end_date, capital=bt_capital,
+                    strategy=selected_strategy, slippage_pct=bt_slippage,
                 )
 
                 perf_calc = PerformanceCalculator()
