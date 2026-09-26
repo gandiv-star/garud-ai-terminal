@@ -9,6 +9,7 @@ from analytics.strategy_health import StrategyHealthMonitor
 from audit.audit_trail import AuditTrail
 from backtest.backtest_engine import BacktestEngine, ChargeModel
 from backtest.walk_forward import WalkForwardValidator
+from backtest.monte_carlo import MonteCarloSimulator
 from config.settings import load_settings
 from core.constants import Decision
 from data.data_validator import DataValidator
@@ -616,6 +617,21 @@ with tab_backtest:
                 c8.metric("Sharpe ratio", summary.sharpe_ratio)
                 c9.metric("Sortino ratio", summary.sortino_ratio)
                 st.caption("Per-trade, not annualized — for comparing strategies/runs against each other, not against published fund Sharpe ratios.")
+
+                if bt_result.trades:
+                    st.write("**Monte Carlo (1000 reshuffles of these same trades' order):**")
+                    mc_sim = MonteCarloSimulator()
+                    mc_pnls = [t.net_pnl for t in bt_result.trades]
+                    mc_result = mc_sim.run(mc_pnls, starting_capital=bt_capital, iterations=1000, seed=42)
+                    mc1, mc2, mc3 = st.columns(3)
+                    mc1.metric("Profitable outcomes", f"{mc_result.pct_profitable}%")
+                    mc2.metric("Median final P&L", f"Rs.{mc_result.median_final_pnl}")
+                    mc3.metric("Worst-case drawdown", f"{mc_result.worst_max_drawdown_pct}%")
+                    st.caption(
+                        f"5th-95th percentile final P&L: Rs.{mc_result.p5_final_pnl} to Rs.{mc_result.p95_final_pnl}. "
+                        "Same trades, reshuffled order — shows how much the outcome depends on lucky/unlucky "
+                        "sequencing rather than the trades themselves. Few trades means wide uncertainty either way."
+                    )
 
                 if bt_result.trades:
                     trades_df = pd.DataFrame([t.__dict__ for t in bt_result.trades])
