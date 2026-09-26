@@ -1,18 +1,10 @@
-from datetime import datetime, timedelta
-from data.yfinance_loader import YFinanceLoader
+from notifications.telegram_alert import TelegramAlerter
 
-print("--- Verify: Corporate Actions (dividends/splits) ---")
-try:
-    loader = YFinanceLoader()
-    end = datetime.now()
-    start = end - timedelta(days=365)
-
-    for symbol in ["RELIANCE", "INFY", "TCS"]:
-        print(f"\n{symbol}:")
-        events = loader.get_corporate_actions(symbol, start, end)
-        if not events:
-            print("  No corporate actions in the last 365 days.")
-        for e in events:
-            print(f"  {e}")
-except Exception as e:
-    print(f"FAILED: {e}")
+print("--- Verify: Telegram Alert ---")
+alerter = TelegramAlerter()
+print(f"Configured: {alerter.is_configured}")
+if alerter.is_configured:
+    ok = alerter.send("🦅 *Garud AI Terminal* — test alert. If you see this, Telegram alerts are working.")
+    print(f"Send result: {ok}")
+else:
+    print("Not configured — check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID secrets.")
