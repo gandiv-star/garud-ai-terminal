@@ -1,18 +1,18 @@
-from llm.news_engine import NewsEngine
+from datetime import datetime, timedelta
+from data.yfinance_loader import YFinanceLoader
 
-print("--- Verify: News Engine (yfinance headlines + Gemini summary) ---")
+print("--- Verify: Corporate Actions (dividends/splits) ---")
 try:
-    engine = NewsEngine()
-    events = engine.fetch_headlines("RELIANCE", limit=5)
-    print(f"Fetched {len(events)} headlines:")
-    for e in events:
-        print(f"  - [{e.timestamp}] {e.title} ({e.publisher})")
+    loader = YFinanceLoader()
+    end = datetime.now()
+    start = end - timedelta(days=365)
 
-    if events:
-        summary = engine.summarize_with_ai("RELIANCE", events)
-        print("\nAI summary:")
-        print(summary)
-    else:
-        print("No headlines returned — either yfinance's news feed is empty for this symbol, or the parsing needs adjustment.")
+    for symbol in ["RELIANCE", "INFY", "TCS"]:
+        print(f"\n{symbol}:")
+        events = loader.get_corporate_actions(symbol, start, end)
+        if not events:
+            print("  No corporate actions in the last 365 days.")
+        for e in events:
+            print(f"  {e}")
 except Exception as e:
     print(f"FAILED: {e}")
