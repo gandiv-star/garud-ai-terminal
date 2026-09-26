@@ -74,6 +74,11 @@ else:
     col2.metric("Kill switch", "Enabled")
     if col3.button("TRIGGER KILL SWITCH", type="primary"):
         st.session_state["kill_switch_engaged"] = True
+        try:
+            from notifications.telegram_alert import TelegramAlerter
+            TelegramAlerter().send("🚨 *KILL SWITCH TRIGGERED* — all new trade actions blocked.")
+        except Exception:
+            pass
         st.rerun()
 
 if st.session_state["kill_switch_engaged"]:
@@ -337,6 +342,14 @@ with tab_analysis:
                             reason=explanation.reason,
                         )
                         st.success(f"Paper trade logged: {trade.internal_order_id}")
+                        try:
+                            from notifications.telegram_alert import TelegramAlerter
+                            TelegramAlerter().send(
+                                f"🦅 *Paper trade logged*\n{r['symbol']} — {r['overall_decision'].value}\n"
+                                f"Entry: {r['features'].price:.2f} | Stop: {r['stop_price']:.2f} | Qty: {r['quantity']}"
+                            )
+                        except Exception:
+                            pass
                     except Exception as e:
                         st.error(f"Logging failed: {e}")
 
@@ -477,6 +490,14 @@ with tab_positions:
                                     exit_price=t.stop_price, realized_pnl=round(net_pnl, 2),
                                 )
                                 st.error(f"Auto-closed {t.symbol} at stop {t.stop_price:.2f} — net P&L: Rs.{net_pnl:.2f}")
+                                try:
+                                    from notifications.telegram_alert import TelegramAlerter
+                                    TelegramAlerter().send(
+                                        f"🛑 *STOP LOSS HIT*\n{t.symbol} auto-closed at {t.stop_price:.2f}\n"
+                                        f"Net P&L: Rs.{net_pnl:.2f}"
+                                    )
+                                except Exception:
+                                    pass
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Auto-close failed: {e}")
@@ -505,6 +526,14 @@ with tab_positions:
                                         exit_price=current_price, realized_pnl=round(net_pnl, 2),
                                     )
                                     st.success(f"Closed {t.symbol} at {current_price:.2f} — net P&L: Rs.{net_pnl:.2f}")
+                                    try:
+                                        from notifications.telegram_alert import TelegramAlerter
+                                        TelegramAlerter().send(
+                                            f"🦅 *Position closed*\n{t.symbol} at {current_price:.2f}\n"
+                                            f"Net P&L: Rs.{net_pnl:.2f}"
+                                        )
+                                    except Exception:
+                                        pass
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Close failed: {e}")
