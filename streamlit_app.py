@@ -36,6 +36,7 @@ from strategies.relative_strength import RelativeStrengthStrategy
 from strategies.trend_following import TrendFollowingStrategy
 from strategies.volatility_expansion import VolatilityExpansionStrategy
 from strategies.volume_breakout import VolumeBreakoutStrategy
+from strategies.registry import STRATEGY_REGISTRY, all_strategy_instances, strategy_names
 
 st.set_page_config(page_title="Garud AI Terminal", layout="wide")
 
@@ -109,11 +110,7 @@ with tab_analysis:
                 regime_engine = RegimeEngine()
                 regime = regime_engine.detect()
 
-                strategies = [
-                    MomentumStrategy(), BreakoutStrategy(), TrendFollowingStrategy(),
-                    MeanReversionStrategy(), RelativeStrengthStrategy(), VolumeBreakoutStrategy(),
-                    VolatilityExpansionStrategy(), RegimeAdaptiveStrategy(),
-                ]
+                strategies = all_strategy_instances()
                 signals = [s.evaluate(fa_symbol, features, regime) for s in strategies]
 
                 scorer = AIScoringEngine()
@@ -373,11 +370,7 @@ with tab_scanner:
                 regime = regime_engine.detect()
                 st.write(f"Regime: **{regime.regime.value}**")
 
-                strategies = [
-                    MomentumStrategy(), BreakoutStrategy(), TrendFollowingStrategy(),
-                    MeanReversionStrategy(), RelativeStrengthStrategy(), VolumeBreakoutStrategy(),
-                    VolatilityExpansionStrategy(), RegimeAdaptiveStrategy(),
-                ]
+                strategies = all_strategy_instances()
                 scorer = AIScoringEngine()
                 loader = YFinanceLoader()
                 fe = FeatureEngine()
@@ -598,16 +591,7 @@ with tab_backtest:
     st.subheader("Backtest (choose a strategy)")
     bt_symbol = st.text_input("NSE symbol", value="RELIANCE", key="bt_symbol")
 
-    strategy_options = {
-        "Momentum": MomentumStrategy,
-        "Breakout": BreakoutStrategy,
-        "Trend Following": TrendFollowingStrategy,
-        "Mean Reversion": MeanReversionStrategy,
-        "Relative Strength": RelativeStrengthStrategy,
-        "Volume Breakout": VolumeBreakoutStrategy,
-        "Volatility Expansion": VolatilityExpansionStrategy,
-        "Regime Adaptive": RegimeAdaptiveStrategy,
-    }
+    strategy_options = STRATEGY_REGISTRY
     bt_strategy_name = st.selectbox("Strategy", list(strategy_options.keys()), key="bt_strategy")
     bt_days = st.slider("Backtest period (days)", 90, 730, 365, key="bt_days")
     bt_capital = st.number_input("Starting capital (Rs)", value=100000.0, step=10000.0, key="bt_capital")
@@ -910,10 +894,7 @@ with tab_research:
     rl_regime = st.text_input("Current regime (or leave as-is)", value="WEAK_BEAR", key="rl_regime")
     rl_sector_context = st.text_input("Sector context (optional)", value="", key="rl_sector_context")
 
-    existing_strategies = [
-        "Momentum", "Breakout", "Trend Following", "Mean Reversion",
-        "Relative Strength", "Volume Breakout", "Volatility Expansion", "Regime Adaptive",
-    ]
+    existing_strategies = strategy_names()
 
     if st.button("Propose a strategy hypothesis"):
         with st.spinner("Asking Gemini for a research idea..."):
