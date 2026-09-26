@@ -102,6 +102,7 @@ class BacktestEngine:
         stop_atr_multiplier: float = 2.0,
         risk_pct_per_trade: float = 1.0,
         strategy: BaseStrategy | None = None,
+        slippage_pct: float = 0.0,
     ) -> BacktestResult:
         loader = YFinanceLoader()
         lookback_start = start_date - timedelta(days=400)
@@ -132,7 +133,7 @@ class BacktestEngine:
                     signal = strategy.evaluate(symbol, features, regime)
                     if signal.decision == Decision.BUY and i + 1 < len(bars):
                         entry_bar = bars[i + 1]
-                        entry_price = entry_bar.open
+                        entry_price = entry_bar.open * (1 + slippage_pct / 100)  # adverse fill: pay more
                         atr_stop_distance = features.atr * stop_atr_multiplier if features.atr else entry_price * 0.03
                         stop_price = entry_price - atr_stop_distance
                         risk_amount = capital * (risk_pct_per_trade / 100)
@@ -153,9 +154,9 @@ class BacktestEngine:
                 exit_reason, exit_price = None, None
 
                 if current_bar.low <= position["stop_price"]:
-                    exit_reason, exit_price = "STOP_LOSS", position["stop_price"]
+                    exit_reason, exit_price = "STOP_LOSS", position["stop_price"] * (1 - slippage_pct / 100)
                 elif days_held >= max_holding_days:
-                    exit_reason, exit_price = "TIME_BASED", current_bar.close
+                    exit_reason, exit_price = "TIME_BASED", current_bar.close * (1 - slippage_pct / 100)
 
                 if exit_reason:
                     buy_turnover = position["entry_price"] * position["quantity"]
