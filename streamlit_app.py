@@ -680,6 +680,120 @@ with tab_backtest:
                 st.error(f"Backtest failed: {e}")
 
     st.divider()
+    st.subheader("Multi-stock backtest (bigger sample)")
+    st.caption(
+        "Runs the chosen strategy independently on every stock in the list over a longer period and pools "
+        "all trades. A 3-trade backtest can't tell an edge from luck — pooling many stocks gives a sample "
+        "big enough for win rate, Monte Carlo and strategy health to actually mean something. Each stock is "
+        "sized off the same capital, so this tests edge across stocks, not a shared-capital portfolio."
+    )
+    mb_universe_input = st.text_input(
+        "Stocks (comma-separated NSE symbols)",
+        value="HDFCBANK,TCS,SUNPHARMA,MARUTI,TATASTEEL,HINDUNILVR,RELIANCE,DLF",
+        key="mb_universe",
+    )
+    mb_strategy_name = st.selectbox("Strategy", list(strategy_options.keys()), key="mb_strategy")
+    mb_days = st.slider("Backtest period (days)", 365, 1825, 1095, step=365, key="mb_days")
+    mb_slippage = st.slider("Slippage stress-test (%)", 0.0, 1.0, 0.0, step=0.05, key="mb_slippage")
+
+    if st.button("Run multi-stock backtest"):
+        mb_symbols = [s.strip().upper() for s in mb_universe_input.split(",") if s.strip()]
+        if not mb_symbols:
+            st.warning("Enter at least one symbol.")
+        else:
+            mb_progress = st.progress(0.0, text="Starting...")
+
+            def _mb_progress(done, total, sym):
+                label = f"Backtesting {sym} ({done + 1}/{total})..." if sym else "Done"
+                mb_progress.progress(min(done / total, 1.0), text=label)
+
+            try:
+                mb_end = datetime.now()
+                mb_start = mb_end - timedelta(days=mb_days)
+                mb_engine = BacktestEngine(ChargeModel())
+                mb_result = mb_engine.run_multi(
+                    mb_symbols, mb_start, mb_end,
+                    strategy_factory=strategy_options[mb_strategy_name],
+                    capital=bt_capital, slippage_pct=mb_slippage,
+                    progress_callback=_mb_progress,
+                )
+
+                if mb_result.errors:
+                    st.warning(
+                        "Skipped (data error): "
+                        + "; ".join(f"{k}: {v}" for k, v in mb_result.errors.items())
+                    )
+
+                if not mb_result.trades:
+                    st.info(f"No trades across any stock — {mb_strategy_name} found no qualifying entry.")
+                else:
+                    mb_summary = PerformanceCalculator().summarize(mb_result.trades, starting_capital=bt_capital)
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("Trades", mb_summary.trade_count)
+                    m2.metric("Net P&L", f"Rs.{mb_summary.net_pnl}")
+                    m3.metric("Win rate", f"{mb_summary.win_rate * 100:.1f}%")
+                    m4.metric("Max drawdown", f"{mb_summary.max_drawdown_pct}%")
+                    m5, m6, m7, m8 = st.columns(4)
+                    m5.metric("Profit factor", mb_summary.profit_factor)
+                    m6.metric("Expectancy/trade", f"Rs.{mb_summary.expectancy}")
+                    m7.metric("Sharpe (per-trade)", mb_summary.sharpe_ratio)
+                    m8.metric("Total charges", f"Rs.{mb_result.total_charges}")
+
+                    if mb_summary.trade_count < 30:
+                        st.caption(
+                            f"Only {mb_summary.trade_count} trades — still a small sample. "
+                            "Add more stocks or a longer period before trusting these numbers."
+                        )
+
+                    st.write("**Per stock:**")
+                    mb_ps_df = pd.DataFrame(mb_result.per_symbol).sort_values("net_pnl", ascending=False)
+                    st.dataframe(mb_ps_df)
+                    mb_pos = sum(1 for r in mb_result.per_symbol if r["net_pnl"] > 0)
+                    mb_with_trades = sum(1 for r in mb_result.per_symbol if r["trades"] > 0)
+                    st.write(
+                        f"**{mb_pos} of {mb_with_trades} stocks (with trades) were net positive.** "
+                        "An edge that only shows up in one stock is probably that stock, not the strategy."
+                    )
+
+                    st.write("**Performance by market regime (at entry):**")
+                    mb_regimes = {}
+                    for t in mb_result.trades:
+                        mb_regimes.setdefault(t.entry_regime or "UNKNOWN", []).append(t.net_pnl)
+                    st.dataframe(pd.DataFrame([
+                        {
+                            "regime": rg,
+                            "trades": len(p),
+                            "net_pnl": round(sum(p), 2),
+                            "win_rate_%": round(sum(1 for x in p if x > 0) / len(p) * 100, 1),
+                        }
+                        for rg, p in mb_regimes.items()
+                    ]).sort_values("trades", ascending=False))
+
+                    st.write("**Monte Carlo (1000 reshuffles of these trades' order):**")
+                    mb_mc = MonteCarloSimulator().run(
+                        [t.net_pnl for t in mb_result.trades],
+                        starting_capital=bt_capital, iterations=1000, seed=42,
+                    )
+                    mc_a, mc_b, mc_c = st.columns(3)
+                    mc_a.metric("Profitable outcomes", f"{mb_mc.pct_profitable}%")
+                    mc_b.metric("Median final P&L", f"Rs.{mb_mc.median_final_pnl}")
+                    mc_c.metric("Worst-case drawdown", f"{mb_mc.worst_max_drawdown_pct}%")
+
+                    mb_health = StrategyHealthMonitor().assess(
+                        mb_strategy_name.lower().replace(" ", "_"), mb_result.trades, min_trades=6
+                    )
+                    st.write(f"**Strategy health:** {mb_health.notes}")
+                    if mb_health.historical_win_rate or mb_health.recent_win_rate:
+                        h1, h2 = st.columns(2)
+                        h1.metric("Recent win rate", f"{mb_health.recent_win_rate * 100:.1f}%")
+                        h2.metric("Historical win rate", f"{mb_health.historical_win_rate * 100:.1f}%")
+
+                    with st.expander(f"All {mb_result.trade_count} trades"):
+                        st.dataframe(pd.DataFrame([t.__dict__ for t in mb_result.trades]))
+            except Exception as e:
+                st.error(f"Multi-stock backtest failed: {e}")
+
+    st.divider()
     st.subheader("Parameter sensitivity (stop-loss ATR multiplier)")
     st.caption(
         "Re-runs the same backtest with a range of stop-loss distances (1.0x-3.0x ATR) instead of just the "
