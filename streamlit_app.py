@@ -79,8 +79,8 @@ else:
 if st.session_state["kill_switch_engaged"]:
     st.error("Kill switch is TRIGGERED — all new trade actions below are blocked until manually reset.")
 
-tab_analysis, tab_scanner, tab_positions, tab_backtest, tab_market, tab_risk = st.tabs(
-    ["Analysis", "Scanner", "Positions", "Backtest", "Market Data", "Risk Center"]
+tab_analysis, tab_scanner, tab_positions, tab_backtest, tab_market, tab_risk, tab_research = st.tabs(
+    ["Analysis", "Scanner", "Positions", "Backtest", "Market Data", "Risk Center", "Research Lab"]
 )
 
 with tab_analysis:
@@ -869,3 +869,36 @@ with tab_risk:
             st.success("Not triggered.")
     except Exception as e:
         st.error(f"Risk Center failed: {e}")
+
+with tab_research:
+    st.subheader("AI Research Lab")
+    st.caption(
+        "Gemini proposes a strategy HYPOTHESIS in plain English only — never code, never auto-run, "
+        "never added to the strategy list automatically. If an idea looks worth trying, come back and "
+        "explicitly ask for it to be built as real, hand-verified code, same as every other strategy here."
+    )
+
+    rl_regime = st.text_input("Current regime (or leave as-is)", value="WEAK_BEAR", key="rl_regime")
+    rl_sector_context = st.text_input("Sector context (optional)", value="", key="rl_sector_context")
+
+    existing_strategies = [
+        "Momentum", "Breakout", "Trend Following", "Mean Reversion",
+        "Relative Strength", "Volume Breakout", "Volatility Expansion", "Regime Adaptive",
+    ]
+
+    if st.button("Propose a strategy hypothesis"):
+        with st.spinner("Asking Gemini for a research idea..."):
+            try:
+                reasoning_engine = AIReasoningEngine()
+                hypothesis = reasoning_engine.propose_strategy_hypothesis(
+                    regime=rl_regime,
+                    existing_strategy_names=existing_strategies,
+                    sector_context=rl_sector_context,
+                )
+                st.info(hypothesis)
+                st.warning(
+                    "This is a text proposal only — nothing has been built, tested, or added. "
+                    "Ask explicitly if you'd like this turned into real, verified code."
+                )
+            except Exception as e:
+                st.error(f"Research Lab unavailable: {e}")
