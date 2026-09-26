@@ -680,6 +680,41 @@ with tab_backtest:
                 st.error(f"Backtest failed: {e}")
 
     st.divider()
+    st.subheader("Parameter sensitivity (stop-loss ATR multiplier)")
+    st.caption(
+        "Re-runs the same backtest with a range of stop-loss distances (1.0x-3.0x ATR) instead of just the "
+        "default 2.0x. If results swing wildly across this range, the strategy is overfit to one exact "
+        "stop distance rather than having a genuine edge robust to reasonable variation."
+    )
+    if st.button("Run parameter sensitivity"):
+        with st.spinner(f"Running {bt_strategy_name} across 5 stop-loss multipliers..."):
+            try:
+                end_date_ps = datetime.now()
+                start_date_ps = end_date_ps - timedelta(days=bt_days)
+                ps_engine = BacktestEngine(ChargeModel())
+                ps_rows = []
+                for mult in [1.0, 1.5, 2.0, 2.5, 3.0]:
+                    ps_strategy = strategy_options[bt_strategy_name]()
+                    ps_result = ps_engine.run(
+                        bt_symbol, start_date_ps, end_date_ps, capital=bt_capital,
+                        strategy=ps_strategy, stop_atr_multiplier=mult,
+                    )
+                    ps_rows.append({
+                        "stop_atr_multiplier": mult,
+                        "trades": ps_result.trade_count,
+                        "net_pnl": ps_result.net_pnl,
+                    })
+                ps_df = pd.DataFrame(ps_rows)
+                st.dataframe(ps_df)
+                positive_count = sum(1 for r in ps_rows if r["net_pnl"] > 0)
+                st.write(
+                    f"**{positive_count} of {len(ps_rows)} stop-loss settings were net positive.** "
+                    "Consistently positive across the range is a healthier sign than one lucky setting."
+                )
+            except Exception as e:
+                st.error(f"Parameter sensitivity failed: {e}")
+
+    st.divider()
     st.subheader("Walk-forward (rolling out-of-sample windows)")
     st.caption(
         "Since these strategies use fixed thresholds rather than fitted parameters, there's nothing to "
