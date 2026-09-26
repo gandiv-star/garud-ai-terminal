@@ -17,9 +17,6 @@ class YFinanceLoader(DataLoader):
     ) -> list[Bar]:
         ticker = yf.Ticker(to_yfinance_symbol(symbol))
         df = ticker.history(start=start, end=end, interval=interval)
-
-        # Drop incomplete/stale rows (e.g. today's bar before Yahoo has
-        # finalized it) — never build a Bar out of missing OHLCV data.
         df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
 
         bars: list[Bar] = []
@@ -50,8 +47,14 @@ class YFinanceLoader(DataLoader):
         ticker = yf.Ticker(to_yfinance_symbol(symbol))
         actions = ticker.actions
         events: list[dict] = []
+        start_date, end_date = start.date(), end.date()
         for timestamp, row in actions.iterrows():
-            if start <= timestamp.to_pydatetime() <= end:
+            # Compare dates only — yfinance's action timestamps are
+            # timezone-aware and start/end here may not be, so comparing
+            # full datetimes can raise "can't compare offset-naive and
+            # offset-aware datetimes". Corporate action dates don't need
+            # intraday precision anyway.
+            if start_date <= timestamp.date() <= end_date:
                 if row.get("Dividends", 0):
                     events.append({"type": "dividend", "date": timestamp, "value": float(row["Dividends"])})
                 if row.get("Stock Splits", 0):
