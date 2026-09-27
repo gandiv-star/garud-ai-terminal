@@ -126,10 +126,12 @@ class BacktestEngine:
         strategy: BaseStrategy | None = None,
         slippage_pct: float = 0.0,
         nifty_series: list | None = None,
+        bars: list | None = None,
+        features_cache: dict | None = None,
     ) -> BacktestResult:
-        loader = YFinanceLoader()
         lookback_start = start_date - timedelta(days=400)
-        bars = loader.get_historical_bars(symbol, lookback_start, end_date)
+        if bars is None:
+            bars = YFinanceLoader().get_historical_bars(symbol, lookback_start, end_date)
         if nifty_series is None:
             nifty_series = _nifty_series(lookback_start, end_date)
         nifty_dates = [d for d, _ in nifty_series]
@@ -157,7 +159,14 @@ class BacktestEngine:
 
             if position is None:
                 if len(bars_so_far) >= 25:
-                    features = fe.compute(symbol, bars_so_far)
+                    # Features depend only on price history, never on the strategy,
+                    # so they can be shared across strategies on the same bars.
+                    if features_cache is not None and i in features_cache:
+                        features = features_cache[i]
+                    else:
+                        features = fe.compute(symbol, bars_so_far)
+                        if features_cache is not None:
+                            features_cache[i] = features
                     regime = _regime_at(nifty_so_far)
                     signal = strategy.evaluate(symbol, features, regime)
                     if signal.decision == Decision.BUY and i + 1 < len(bars):
@@ -289,3 +298,79 @@ class BacktestEngine:
             per_symbol=per_symbol,
             errors=errors,
         )
+
+    def compare_strategies(
+        self,
+        symbols: list[str],
+        start_date: datetime,
+        end_date: datetime,
+        strategy_factories: dict,
+        capital: float = 100000.0,
+        max_holding_days: int = 10,
+        stop_atr_multiplier: float = 2.0,
+        risk_pct_per_trade: float = 1.0,
+        slippage_pct: float = 0.0,
+        progress_callback: Callable[[int, int, str], None] | None = None,
+    ) -> tuple[list[dict], dict]:
+        """Runs every strategy on every symbol with identical data and settings.
+        NIFTY and each symbol's bars are fetched ONCE, and features are computed
+        once per symbol and shared by all strategies (they don't depend on the
+        strategy), so this costs far less than calling run_multi 8 times.
+        Returns (rows, errors) — one row per strategy with gross vs charges vs net."""
+        lookback_start = start_date - timedelta(days=400)
+        nifty_series = _nifty_series(lookback_start, end_date)
+        loader = YFinanceLoader()
+
+        data: dict[str, list] = {}
+        errors: dict[str, str] = {}
+        for sym in symbols:
+            try:
+                data[sym] = loader.get_historical_bars(sym, lookback_start, end_date)
+            except Exception as e:
+                errors[sym] = str(e)
+        feature_caches = {sym: {} for sym in data}
+
+        rows = []
+        total = len(strategy_factories)
+        for idx, (name, factory) in enumerate(strategy_factories.items()):
+            if progress_callback:
+                progress_callback(idx, total, name)
+            trades: list[TradeRecord] = []
+            positive_symbols = 0
+            symbols_with_trades = 0
+            for sym, bars in data.items():
+                try:
+                    res = self.run(
+                        sym, start_date, end_date, capital=capital,
+                        max_holding_days=max_holding_days,
+                        stop_atr_multiplier=stop_atr_multiplier,
+                        risk_pct_per_trade=risk_pct_per_trade,
+                        strategy=factory(), slippage_pct=slippage_pct,
+                        nifty_series=nifty_series, bars=bars,
+                        features_cache=feature_caches[sym],
+                    )
+                except Exception as e:
+                    errors[f"{name}/{sym}"] = str(e)
+                    continue
+                trades.extend(res.trades)
+                if res.trade_count:
+                    symbols_with_trades += 1
+                    if res.net_pnl > 0:
+                        positive_symbols += 1
+            wins = [t.net_pnl for t in trades if t.net_pnl > 0]
+            losses = [t.net_pnl for t in trades if t.net_pnl <= 0]
+            n = len(trades)
+            rows.append({
+                "strategy": name,
+                "trades": n,
+                "gross_pnl": round(sum(t.gross_pnl for t in trades), 2),
+                "charges": round(sum(t.charges for t in trades), 2),
+                "net_pnl": round(sum(t.net_pnl for t in trades), 2),
+                "win_rate_%": round(len(wins) / n * 100, 1) if n else 0.0,
+                "profit_factor": round(sum(wins) / abs(sum(losses)), 2) if losses and sum(losses) != 0 else None,
+                "net_per_trade": round(sum(t.net_pnl for t in trades) / n, 2) if n else 0.0,
+                "positive_stocks": f"{positive_symbols}/{symbols_with_trades}",
+            })
+        if progress_callback:
+            progress_callback(total, total, "")
+        return rows, errors
