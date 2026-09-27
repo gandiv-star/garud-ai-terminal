@@ -10,6 +10,7 @@ from audit.audit_trail import AuditTrail
 from backtest.backtest_engine import BacktestEngine, ChargeModel
 from backtest.walk_forward import WalkForwardValidator
 from backtest.monte_carlo import MonteCarloSimulator
+from backtest.bootstrap import bootstrap_trades
 from config.settings import load_settings
 from core.constants import Decision
 from data.data_validator import DataValidator
@@ -587,6 +588,23 @@ with tab_positions:
     except Exception as e:
         st.error(f"Loading closed trades failed: {e}")
 
+def _show_bootstrap(pnls, starting_capital):
+    """Bootstrap Monte Carlo: resamples trades WITH replacement, so total P&L
+    genuinely varies (a plain reshuffle keeps the total identical every time)."""
+    boot = bootstrap_trades(pnls, starting_capital=starting_capital, iterations=2000, seed=42)
+    st.write(f"**Bootstrap Monte Carlo ({boot.iterations} resampled histories of {boot.trades_per_path} trades):**")
+    b1, b2, b3 = st.columns(3)
+    b1.metric("Chance of profit", f"{boot.pct_profitable}%")
+    b2.metric("Median final P&L", f"Rs.{boot.median_final_pnl}")
+    b3.metric("Drawdown (95th pct)", f"{boot.p95_max_drawdown_pct}%")
+    st.caption(
+        f"90% of simulated outcomes fell between Rs.{boot.p5_final_pnl} and Rs.{boot.p95_final_pnl}. "
+        "Each simulation draws the same number of trades at random (with repeats) from the real ones — "
+        "a range that straddles zero means the data can't yet distinguish an edge from luck. "
+        "With very few trades this range is unreliable."
+    )
+
+
 with tab_backtest:
     st.subheader("Backtest (choose a strategy)")
     bt_symbol = st.text_input("NSE symbol", value="RELIANCE", key="bt_symbol")
@@ -632,19 +650,7 @@ with tab_backtest:
                 st.caption("Per-trade, not annualized — for comparing strategies/runs against each other, not against published fund Sharpe ratios.")
 
                 if bt_result.trades:
-                    st.write("**Monte Carlo (1000 reshuffles of these same trades' order):**")
-                    mc_sim = MonteCarloSimulator()
-                    mc_pnls = [t.net_pnl for t in bt_result.trades]
-                    mc_result = mc_sim.run(mc_pnls, starting_capital=bt_capital, iterations=1000, seed=42)
-                    mc1, mc2, mc3 = st.columns(3)
-                    mc1.metric("Profitable outcomes", f"{mc_result.pct_profitable}%")
-                    mc2.metric("Median final P&L", f"Rs.{mc_result.median_final_pnl}")
-                    mc3.metric("Worst-case drawdown", f"{mc_result.worst_max_drawdown_pct}%")
-                    st.caption(
-                        f"5th-95th percentile final P&L: Rs.{mc_result.p5_final_pnl} to Rs.{mc_result.p95_final_pnl}. "
-                        "Same trades, reshuffled order — shows how much the outcome depends on lucky/unlucky "
-                        "sequencing rather than the trades themselves. Few trades means wide uncertainty either way."
-                    )
+                    _show_bootstrap([t.net_pnl for t in bt_result.trades], bt_capital)
 
                 if bt_result.trades:
                     trades_df = pd.DataFrame([t.__dict__ for t in bt_result.trades])
@@ -739,6 +745,11 @@ with tab_backtest:
                     m7.metric("Sharpe (per-trade)", mb_summary.sharpe_ratio)
                     m8.metric("Total charges", f"Rs.{mb_result.total_charges}")
 
+                    st.caption(
+                        f"Gross P&L before charges: Rs.{mb_result.gross_pnl} → charges Rs.{mb_result.total_charges} "
+                        f"→ net Rs.{mb_result.net_pnl}. If gross is positive but net is negative, the edge exists "
+                        "but is too small to survive trading costs."
+                    )
                     if mb_summary.trade_count < 30:
                         st.caption(
                             f"Only {mb_summary.trade_count} trades — still a small sample. "
@@ -769,15 +780,7 @@ with tab_backtest:
                         for rg, p in mb_regimes.items()
                     ]).sort_values("trades", ascending=False))
 
-                    st.write("**Monte Carlo (1000 reshuffles of these trades' order):**")
-                    mb_mc = MonteCarloSimulator().run(
-                        [t.net_pnl for t in mb_result.trades],
-                        starting_capital=bt_capital, iterations=1000, seed=42,
-                    )
-                    mc_a, mc_b, mc_c = st.columns(3)
-                    mc_a.metric("Profitable outcomes", f"{mb_mc.pct_profitable}%")
-                    mc_b.metric("Median final P&L", f"Rs.{mb_mc.median_final_pnl}")
-                    mc_c.metric("Worst-case drawdown", f"{mb_mc.worst_max_drawdown_pct}%")
+                    _show_bootstrap([t.net_pnl for t in mb_result.trades], bt_capital)
 
                     mb_health = StrategyHealthMonitor().assess(
                         mb_strategy_name.lower().replace(" ", "_"), mb_result.trades, min_trades=6
@@ -792,6 +795,58 @@ with tab_backtest:
                         st.dataframe(pd.DataFrame([t.__dict__ for t in mb_result.trades]))
             except Exception as e:
                 st.error(f"Multi-stock backtest failed: {e}")
+
+    st.divider()
+    st.subheader("Strategy comparison (all strategies, same stocks)")
+    st.caption(
+        "Runs every strategy on the same stocks, period and settings, and shows gross P&L (before costs), "
+        "charges and net side by side. A strategy with positive gross but negative net has a real but "
+        "too-small edge; negative gross means no edge at all. Uses the stock list and slippage from the "
+        "multi-stock section above. Data is downloaded once and shared, but this can still take a few minutes."
+    )
+    cmp_days = st.slider("Comparison period (days)", 365, 1825, 730, step=365, key="cmp_days")
+    if st.button("Run strategy comparison"):
+        cmp_symbols = [s.strip().upper() for s in mb_universe_input.split(",") if s.strip()]
+        if not cmp_symbols:
+            st.warning("Enter at least one symbol in the multi-stock section.")
+        else:
+            cmp_progress = st.progress(0.0, text="Downloading data...")
+
+            def _cmp_progress(done, total, name):
+                label = f"Testing {name} ({done + 1}/{total})..." if name else "Done"
+                cmp_progress.progress(min(done / total, 1.0), text=label)
+
+            try:
+                cmp_end = datetime.now()
+                cmp_start = cmp_end - timedelta(days=cmp_days)
+                cmp_rows, cmp_errors = BacktestEngine(ChargeModel()).compare_strategies(
+                    cmp_symbols, cmp_start, cmp_end,
+                    strategy_factories=dict(strategy_options),
+                    capital=bt_capital, slippage_pct=mb_slippage,
+                    progress_callback=_cmp_progress,
+                )
+                if cmp_errors:
+                    st.warning("Skipped: " + "; ".join(f"{k}: {v}" for k, v in cmp_errors.items()))
+                cmp_df = pd.DataFrame(cmp_rows).sort_values("net_pnl", ascending=False)
+                st.dataframe(cmp_df, hide_index=True)
+
+                edge_after_costs = [r["strategy"] for r in cmp_rows if r["net_pnl"] > 0 and r["trades"] >= 30]
+                edge_before_costs = [
+                    r["strategy"] for r in cmp_rows if r["gross_pnl"] > 0 and r["net_pnl"] <= 0 and r["trades"] >= 30
+                ]
+                thin = [r["strategy"] for r in cmp_rows if r["trades"] < 30]
+                st.write(
+                    f"**Net positive (30+ trades):** {', '.join(edge_after_costs) or 'none'}  \n"
+                    f"**Positive before costs only:** {', '.join(edge_before_costs) or 'none'}  \n"
+                    f"**Too few trades to judge (<30):** {', '.join(thin) or 'none'}"
+                )
+                st.caption(
+                    "This is a screening tool, not proof. Before trusting a winner, check it with "
+                    "parameter sensitivity, walk-forward and bootstrap — picking the best of 8 results "
+                    "will always find something that looks good by chance."
+                )
+            except Exception as e:
+                st.error(f"Strategy comparison failed: {e}")
 
     st.divider()
     st.subheader("Parameter sensitivity (stop-loss ATR multiplier)")
