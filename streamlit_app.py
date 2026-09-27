@@ -864,6 +864,13 @@ with tab_backtest:
     )
     rb_days = st.slider("Total period (days)", 730, 1825, 1095, step=365, key="rb_days")
     rb_window = st.select_slider("Walk-forward window size (days)", options=[90, 180, 365], value=180, key="rb_window")
+    rb_regimes = st.multiselect(
+        "Only take new trades when NIFTY regime is (leave empty = all regimes)",
+        ["MODERATE_BULL", "WEAK_BULL", "SIDEWAYS", "WEAK_BEAR"],
+        default=[], key="rb_regimes",
+        help="Regime comes from NIFTY vs its 50/200-day averages (fixed rules, not fitted). "
+             "Open trades are not closed by the filter — it only blocks new entries.",
+    )
 
     if st.button("Run robustness check"):
         rb_symbols = [s.strip().upper() for s in mb_universe_input.split(",") if s.strip()]
@@ -883,11 +890,14 @@ with tab_backtest:
                     rb_symbols, rb_start, rb_end,
                     strategy_factory=strategy_options[rb_strategy_name],
                     window_days=rb_window, capital=bt_capital, slippage_pct=mb_slippage,
+                    allowed_regimes=set(rb_regimes) or None,
                     progress_callback=_rb_progress,
                 )
                 if rb["errors"]:
                     st.warning("Skipped: " + "; ".join(f"{k}: {v}" for k, v in rb["errors"].items()))
 
+                if rb_regimes:
+                    st.info("Regime filter ON — new trades only in: " + ", ".join(rb_regimes))
                 st.write("**1. Stop-loss sensitivity (full period, all stocks pooled):**")
                 st.dataframe(pd.DataFrame(rb["sensitivity"]), hide_index=True)
                 sens_pos = sum(1 for r in rb["sensitivity"] if r["net_pnl"] > 0)
@@ -908,16 +918,27 @@ with tab_backtest:
                 else:
                     st.info("No trades at 2.0x.")
 
+                if rb["regime_breakdown"]:
+                    st.write("**4. Pooled 2.0x trades by NIFTY regime at entry:**")
+                    st.dataframe(pd.DataFrame(rb["regime_breakdown"]), hide_index=True)
+
                 wf_ratio = (wf_pos / len(wf_traded)) if rb["walk_forward"] and wf_traded else 0
-                if sens_pos >= 4 and wf_ratio >= 0.6:
+                base_row = next((r for r in rb["sensitivity"] if r["stop_atr_multiplier"] == 2.0), None)
+                base_pf = (base_row or {}).get("profit_factor") or 0
+                checks = [
+                    (sens_pos >= 4, f"stop settings positive: {sens_pos}/5 (need 4+)"),
+                    (wf_ratio >= 0.6, f"windows positive: {wf_ratio * 100:.0f}% (need 60%+)"),
+                    (base_pf >= 1.15, f"profit factor at 2.0x: {base_pf} (need 1.15+, so the edge can absorb slippage)"),
+                ]
+                st.write("  \n".join(("✅ " if ok else "❌ ") + txt for ok, txt in checks))
+                if all(ok for ok, _ in checks):
                     st.success(
-                        "Passes the basic screen: positive across most stop settings and most time windows. "
-                        "Next step is paper trading — still not proof of a live edge."
+                        "Passes the screen. Next step is paper trading — still not proof of a live edge."
                     )
                 else:
                     st.warning(
-                        "Does not pass the basic screen (needs 4+ of 5 stop settings AND 60%+ of windows positive). "
-                        "The comparison result may have been luck or one favourable period."
+                        "Does not pass the screen. The result may be luck, one favourable period, "
+                        "or an edge too thin to survive real-world costs."
                     )
             except Exception as e:
                 st.error(f"Robustness check failed: {e}")
