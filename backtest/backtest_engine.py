@@ -159,6 +159,7 @@ class BacktestEngine:
         nifty_series: list | None = None,
         bars: list | None = None,
         features_cache: dict | None = None,
+        allowed_regimes: set | None = None,
     ) -> BacktestResult:
         lookback_start = start_date - timedelta(days=400)
         if bars is None:
@@ -205,6 +206,10 @@ class BacktestEngine:
                         if features_cache is not None:
                             features_cache[i] = features
                     regime = _regime_at(nifty_so_far)
+                    # Optional market filter: skip new entries unless NIFTY's regime is
+                    # in the allowed set. Open positions are never force-closed by it.
+                    if allowed_regimes and regime.regime.value not in allowed_regimes:
+                        continue
                     signal = strategy.evaluate(symbol, features, regime)
                     if signal.decision == Decision.BUY and i + 1 < len(bars):
                         entry_bar = bars[i + 1]
@@ -410,6 +415,7 @@ class BacktestEngine:
         strategy_factory: Callable[[], BaseStrategy],
         multipliers: tuple = (1.0, 1.5, 2.0, 2.5, 3.0),
         window_days: int = 180,
+        allowed_regimes: set | None = None,
         capital: float = 100000.0,
         max_holding_days: int = 10,
         risk_pct_per_trade: float = 1.0,
@@ -450,6 +456,7 @@ class BacktestEngine:
                         strategy=strategy_factory(), slippage_pct=slippage_pct,
                         nifty_series=nifty_series, bars=bars,
                         features_cache=caches[sym],
+                        allowed_regimes=allowed_regimes,
                     )
                 except Exception as e:
                     errors[f"{label}/{sym}"] = str(e)
@@ -470,9 +477,20 @@ class BacktestEngine:
             trades, per_sym = _pooled(w_s, w_e, 2.0, f"window {w_s.date()}")
             walk_forward.append({"window": f"{w_s.date()} to {w_e.date()}", **_pool_stats(trades, per_sym)})
 
+        regime_groups: dict[str, list] = {}
+        for t in base_trades:
+            regime_groups.setdefault(t.entry_regime or "UNKNOWN", []).append(t)
+        regime_breakdown = sorted(
+            ({"regime": rg, **_pool_stats(ts, {})} for rg, ts in regime_groups.items()),
+            key=lambda r: -r["trades"],
+        )
+        for r in regime_breakdown:
+            r.pop("positive_stocks", None)
+
         if progress_callback:
             progress_callback(total, total, "")
         return {
+            "regime_breakdown": regime_breakdown,
             "sensitivity": sensitivity,
             "walk_forward": walk_forward,
             "base_trades": base_trades,
