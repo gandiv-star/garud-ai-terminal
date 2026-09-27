@@ -805,6 +805,10 @@ with tab_backtest:
         "multi-stock section above. Data is downloaded once and shared, but this can still take a few minutes."
     )
     cmp_days = st.slider("Comparison period (days)", 365, 1825, 730, step=365, key="cmp_days")
+    cmp_hold = st.select_slider(
+        "Max holding days (time exit)", options=[10, 20, 40, 60], value=10, key="cmp_hold",
+        help="Trades still open after this many days are closed at the close. 10 is the default used so far.",
+    )
     if st.button("Run strategy comparison"):
         cmp_symbols = [s.strip().upper() for s in mb_universe_input.split(",") if s.strip()]
         if not cmp_symbols:
@@ -823,11 +827,13 @@ with tab_backtest:
                     cmp_symbols, cmp_start, cmp_end,
                     strategy_factories=dict(strategy_options),
                     capital=bt_capital, slippage_pct=mb_slippage,
+                    max_holding_days=cmp_hold,
                     progress_callback=_cmp_progress,
                 )
                 if cmp_errors:
                     st.warning("Skipped: " + "; ".join(f"{k}: {v}" for k, v in cmp_errors.items()))
                 cmp_df = pd.DataFrame(cmp_rows).sort_values("net_pnl", ascending=False)
+                st.caption(f"Max holding days: {cmp_hold}")
                 st.dataframe(cmp_df, hide_index=True)
 
                 edge_after_costs = [r["strategy"] for r in cmp_rows if r["net_pnl"] > 0 and r["trades"] >= 30]
@@ -864,6 +870,9 @@ with tab_backtest:
     )
     rb_days = st.slider("Total period (days)", 730, 1825, 1095, step=365, key="rb_days")
     rb_window = st.select_slider("Walk-forward window size (days)", options=[90, 180, 365], value=180, key="rb_window")
+    rb_hold = st.select_slider(
+        "Max holding days (time exit)", options=[10, 20, 40, 60], value=10, key="rb_hold",
+    )
     rb_regimes = st.multiselect(
         "Only take new trades when NIFTY regime is (leave empty = all regimes)",
         ["MODERATE_BULL", "WEAK_BULL", "SIDEWAYS", "WEAK_BEAR"],
@@ -891,6 +900,7 @@ with tab_backtest:
                     strategy_factory=strategy_options[rb_strategy_name],
                     window_days=rb_window, capital=bt_capital, slippage_pct=mb_slippage,
                     allowed_regimes=set(rb_regimes) or None,
+                    max_holding_days=rb_hold,
                     progress_callback=_rb_progress,
                 )
                 if rb["errors"]:
