@@ -11,6 +11,7 @@ from backtest.backtest_engine import BacktestEngine, ChargeModel
 from backtest.walk_forward import WalkForwardValidator
 from backtest.monte_carlo import MonteCarloSimulator
 from backtest.bootstrap import bootstrap_trades
+from backtest import paper_rule
 from config.settings import load_settings
 from core.constants import Decision
 from data.data_validator import DataValidator
@@ -429,6 +430,131 @@ with tab_scanner:
                 st.error(f"Scan failed: {e}")
 
 with tab_positions:
+    st.subheader("📌 Rule-based paper trading (pre-registered)")
+    st.caption(paper_rule.rule_description())
+    st.caption(
+        "This rule is fixed. Signals use the last COMPLETED daily bar (during market hours today's "
+        "unfinished bar is ignored), the same NIFTY regime rule as the backtest, and the same stop/size/"
+        "time-exit. Entry price is the latest price when you log it. Best routine: check after 3:35 PM "
+        "or before the next open, then log."
+    )
+    rule_symbols_input = st.text_input(
+        "Rule universe (same 8 stocks as the backtest — keep it fixed)",
+        value="HDFCBANK,TCS,SUNPHARMA,MARUTI,TATASTEEL,HINDUNILVR,RELIANCE,DLF",
+        key="rule_universe",
+    )
+    if st.button("Check today's rule signals"):
+        with st.spinner("Checking signals on the last completed bar..."):
+            try:
+                syms = [s.strip().upper() for s in rule_symbols_input.split(",") if s.strip()]
+                regime_now, sigs, sig_errors = paper_rule.scan(syms, STRATEGY_REGISTRY[paper_rule.RULE_STRATEGY])
+                st.session_state["rule_scan"] = {
+                    "regime": regime_now, "signals": sigs, "errors": sig_errors,
+                    "checked_at": paper_rule.now_ist().strftime("%Y-%m-%d %H:%M IST"),
+                }
+            except Exception as e:
+                st.error(f"Rule signal check failed: {e}")
+
+    rule_scan = st.session_state.get("rule_scan")
+    if rule_scan:
+        ok = rule_scan["regime"] in paper_rule.ALLOWED_REGIMES
+        st.write(
+            f"**NIFTY regime:** {rule_scan['regime']} "
+            + ("✅ rule allows new entries" if ok else "⛔ rule blocks new entries")
+            + f"  \n_Checked: {rule_scan['checked_at']}_"
+        )
+        if rule_scan["errors"]:
+            st.warning("Skipped: " + "; ".join(f"{k}: {v}" for k, v in rule_scan["errors"].items()))
+        st.dataframe(pd.DataFrame([
+            {"symbol": g.symbol, "signal_date": str(g.signal_date), "close": g.last_close,
+             "strategy": g.strategy_decision, "action": g.note}
+            for g in rule_scan["signals"]
+        ]), hide_index=True)
+
+        actionable = [g for g in rule_scan["signals"] if g.actionable]
+        if not actionable:
+            st.info("No actionable rule signal right now — nothing to log. That is a valid outcome.")
+        for g in actionable:
+            gc1, gc2 = st.columns([3, 2])
+            gc1.write(f"**{g.symbol}** — signal on {g.signal_date}, last close {g.last_close}")
+            if gc2.button(f"Log {g.symbol} rule trade", key=f"rule_log_{g.symbol}_{g.signal_date}"):
+                if st.session_state.get("kill_switch_engaged"):
+                    st.warning("Kill switch is triggered — logging blocked.")
+                elif settings.trading_mode.value == "BACKTEST":
+                    st.info("Mode is BACKTEST — switch TRADING_MODE to PAPER to log trades.")
+                else:
+                    try:
+                        db_rule = Database(settings)
+                        db_rule.connect()
+                        blocked = paper_rule.rule_already_used(db_rule.get_trades(limit=1000), g.symbol, g.signal_date)
+                        if blocked:
+                            st.warning(f"{g.symbol}: not logged — {blocked}.")
+                        else:
+                            live_bars = YFinanceLoader().get_historical_bars(
+                                g.symbol, datetime.now() - timedelta(days=5), datetime.now() + timedelta(days=1)
+                            )
+                            entry_px = round(live_bars[-1].close, 2) if live_bars else g.last_close
+                            stop_px, qty = paper_rule.position_size(entry_px, g.atr)
+                            if qty <= 0:
+                                st.warning(f"{g.symbol}: position size came out as 0 — not logged.")
+                            else:
+                                rule_trade = TradeRecord(
+                                    internal_order_id=f"garud-rule-{uuid.uuid4()}", symbol=g.symbol,
+                                    strategy_name=paper_rule.RULE_ID, strategy_version=paper_rule.RULE_REGISTERED_ON,
+                                    decision="BUY", ai_score=0.0, entry_price=entry_px, stop_price=stop_px,
+                                    target_price=None, quantity=qty,
+                                    risk_amount=round((entry_px - stop_px) * qty, 2),
+                                    regime=g.regime, sector="", timestamp=datetime.now(timezone.utc),
+                                )
+                                db_rule.save_trade(rule_trade)
+                                AuditTrail(db_rule).record(
+                                    symbol=g.symbol, event_type="RULE_PAPER_TRADE_LOGGED",
+                                    decision="BUY", ai_score=0.0,
+                                    reason=(f"{paper_rule.RULE_ID}: signal {g.signal_date}, regime {g.regime}, "
+                                            f"entry {entry_px}, stop {stop_px}, qty {qty}"),
+                                )
+                                st.success(f"Logged {g.symbol}: entry {entry_px}, stop {stop_px}, qty {qty}")
+                                try:
+                                    from notifications.telegram_alert import TelegramAlerter
+                                    TelegramAlerter().send(
+                                        f"📌 *Rule paper trade*\n{g.symbol} — {paper_rule.RULE_ID}\n"
+                                        f"Entry: {entry_px:.2f} | Stop: {stop_px:.2f} | Qty: {qty}"
+                                    )
+                                except Exception:
+                                    pass
+                    except Exception as e:
+                        st.error(f"Rule logging failed: {e}")
+
+    try:
+        db_rs = Database(settings)
+        db_rs.connect()
+        rule_trades = [t for t in db_rs.get_trades(limit=1000) if t.strategy_name == paper_rule.RULE_ID]
+        rule_closed = [t for t in rule_trades if t.exit_price is not None]
+        rule_open = [t for t in rule_trades if t.exit_price is None]
+        wins = [t.realized_pnl for t in rule_closed if t.realized_pnl > 0]
+        losses = [t.realized_pnl for t in rule_closed if t.realized_pnl <= 0]
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("Rule trades closed", f"{len(rule_closed)}/{paper_rule.TARGET_TRADES}")
+        r2.metric("Open", len(rule_open))
+        r3.metric("Net P&L", f"Rs.{round(sum(t.realized_pnl for t in rule_closed), 2)}")
+        r4.metric(
+            "Profit factor",
+            round(sum(wins) / abs(sum(losses)), 2) if losses and sum(losses) != 0 else "—",
+        )
+        if len(rule_closed) < paper_rule.TARGET_TRADES:
+            st.caption(
+                f"No verdict until {paper_rule.TARGET_TRADES} closed trades — early results are mostly noise."
+            )
+        if rule_trades:
+            st.download_button(
+                "Download rule trades (CSV backup)",
+                pd.DataFrame([t.__dict__ for t in rule_trades]).to_csv(index=False),
+                file_name=f"{paper_rule.RULE_ID}_trades.csv", mime="text/csv",
+            )
+    except Exception as e:
+        st.error(f"Rule stats failed: {e}")
+
+    st.divider()
     st.subheader("Open paper positions")
     st.caption("Stop-loss is checked automatically whenever this tab loads/refreshes (not real-time streaming).")
     try:
@@ -442,6 +568,48 @@ with tab_positions:
         else:
             loader = YFinanceLoader()
             for t in open_trades:
+                if t.strategy_name == paper_rule.RULE_ID:
+                    # Rule trades replay the backtest's exit logic over every bar since
+                    # entry (intraday low vs stop, then the 10-day time exit), so an exit
+                    # is caught at the right price even if the app wasn't opened that day.
+                    try:
+                        rule_bars = loader.get_historical_bars(
+                            t.symbol, t.timestamp.replace(tzinfo=None) - timedelta(days=3),
+                            datetime.now() + timedelta(days=1),
+                        )
+                        rx = paper_rule.rule_exit(t.timestamp, t.stop_price, rule_bars)
+                    except Exception as e:
+                        rx = None
+                        st.warning(f"{t.symbol}: rule exit check failed ({e}) — will retry on next load.")
+                    if rx:
+                        rx_reason, rx_price, rx_date = rx
+                        if st.session_state.get("kill_switch_engaged"):
+                            st.warning(f"{t.symbol}: rule exit ({rx_reason}) due but kill switch is triggered — not closing.")
+                        else:
+                            try:
+                                cm = ChargeModel()
+                                rx_charges = cm.buy_charges(t.entry_price * t.quantity) + cm.sell_charges(rx_price * t.quantity)
+                                rx_net = round((rx_price - t.entry_price) * t.quantity - rx_charges, 2)
+                                db.update_trade_exit(
+                                    internal_order_id=t.internal_order_id, exit_price=rx_price,
+                                    exit_timestamp=datetime.combine(rx_date, datetime.min.time()), realized_pnl=rx_net,
+                                )
+                                AuditTrail(db).record(
+                                    symbol=t.symbol, event_type=f"RULE_PAPER_{rx_reason}",
+                                    exit_price=rx_price, realized_pnl=rx_net,
+                                )
+                                st.info(f"Rule exit: {t.symbol} {rx_reason} on {rx_date} at {rx_price} — net Rs.{rx_net}")
+                                try:
+                                    from notifications.telegram_alert import TelegramAlerter
+                                    TelegramAlerter().send(
+                                        f"📌 *Rule exit ({rx_reason})*\n{t.symbol} at {rx_price:.2f} on {rx_date}\n"
+                                        f"Net P&L: Rs.{rx_net:.2f}"
+                                    )
+                                except Exception:
+                                    pass
+                                continue
+                            except Exception as e:
+                                st.error(f"Rule exit failed for {t.symbol}: {e}")
                 with st.container():
                     current_price = None
                     try:
