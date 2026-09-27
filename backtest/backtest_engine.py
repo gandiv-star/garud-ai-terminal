@@ -89,6 +89,37 @@ class MultiBacktestResult:
     errors: dict = field(default_factory=dict)      # symbol -> error message
 
 
+def _load_universe(symbols: list[str], start_date: datetime, end_date: datetime):
+    """Downloads NIFTY and every symbol's bars ONCE (with the 400-day feature
+    lookback). Returns (nifty_series, {symbol: bars}, {symbol: error})."""
+    lookback_start = start_date - timedelta(days=400)
+    nifty_series = _nifty_series(lookback_start, end_date)
+    loader = YFinanceLoader()
+    data, errors = {}, {}
+    for sym in symbols:
+        try:
+            data[sym] = loader.get_historical_bars(sym, lookback_start, end_date)
+        except Exception as e:
+            errors[sym] = str(e)
+    return nifty_series, data, errors
+
+
+def _pool_stats(trades: list, per_symbol_net: dict) -> dict:
+    wins = [t.net_pnl for t in trades if t.net_pnl > 0]
+    losses = [t.net_pnl for t in trades if t.net_pnl <= 0]
+    n = len(trades)
+    traded = [v for v in per_symbol_net.values() if v is not None]
+    return {
+        "trades": n,
+        "gross_pnl": round(sum(t.gross_pnl for t in trades), 2),
+        "charges": round(sum(t.charges for t in trades), 2),
+        "net_pnl": round(sum(t.net_pnl for t in trades), 2),
+        "win_rate_%": round(len(wins) / n * 100, 1) if n else 0.0,
+        "profit_factor": round(sum(wins) / abs(sum(losses)), 2) if losses and sum(losses) != 0 else None,
+        "positive_stocks": f"{sum(1 for v in traded if v > 0)}/{len(traded)}",
+    }
+
+
 def _regime_at(closes_so_far: list[float]) -> RegimeAssessment:
     if len(closes_so_far) < 200:
         return RegimeAssessment(regime=MarketRegime.SIDEWAYS, confidence=0.0, risk_level=RiskLevel.MODERATE)
@@ -144,13 +175,19 @@ class BacktestEngine:
         trades: list[TradeRecord] = []
         position = None
 
-        start_idx = 0
+        # If no bar is on/after start_date, run nothing (previously this fell
+        # back to index 0 and silently backtested the whole lookback period).
+        start_idx = len(bars)
         for i, b in enumerate(bars):
             if b.timestamp.date() >= start_date.date():
                 start_idx = i
                 break
 
         for i in range(start_idx, len(bars)):
+            # Pre-fetched bars may extend past this run's end_date (walk-forward
+            # windows share one download), so stop at end_date explicitly.
+            if bars[i].timestamp.date() > end_date.date():
+                break
             bars_so_far = bars[: i + 1]
             # Date-aligned: NIFTY closes up to and including this bar's date
             # (previously index-aligned, which drifts if a stock has missing days
@@ -317,17 +354,7 @@ class BacktestEngine:
         once per symbol and shared by all strategies (they don't depend on the
         strategy), so this costs far less than calling run_multi 8 times.
         Returns (rows, errors) — one row per strategy with gross vs charges vs net."""
-        lookback_start = start_date - timedelta(days=400)
-        nifty_series = _nifty_series(lookback_start, end_date)
-        loader = YFinanceLoader()
-
-        data: dict[str, list] = {}
-        errors: dict[str, str] = {}
-        for sym in symbols:
-            try:
-                data[sym] = loader.get_historical_bars(sym, lookback_start, end_date)
-            except Exception as e:
-                errors[sym] = str(e)
+        nifty_series, data, errors = _load_universe(symbols, start_date, end_date)
         feature_caches = {sym: {} for sym in data}
 
         rows = []
@@ -374,3 +401,80 @@ class BacktestEngine:
         if progress_callback:
             progress_callback(total, total, "")
         return rows, errors
+
+    def robustness_multi(
+        self,
+        symbols: list[str],
+        start_date: datetime,
+        end_date: datetime,
+        strategy_factory: Callable[[], BaseStrategy],
+        multipliers: tuple = (1.0, 1.5, 2.0, 2.5, 3.0),
+        window_days: int = 180,
+        capital: float = 100000.0,
+        max_holding_days: int = 10,
+        risk_pct_per_trade: float = 1.0,
+        slippage_pct: float = 0.0,
+        progress_callback: Callable[[int, int, str], None] | None = None,
+    ) -> dict:
+        """Robustness checks for ONE strategy across MANY stocks, pooled:
+        1) stop-loss sensitivity (each ATR multiplier over the full period), and
+        2) walk-forward: independent, non-overlapping time windows at the default 2.0x stop.
+        Data is downloaded once and features are shared, so every sub-run sees
+        identical data. A position still open when a window ends is dropped, not
+        carried into the next window (each window is judged on its own)."""
+        nifty_series, data, errors = _load_universe(symbols, start_date, end_date)
+        caches = {sym: {} for sym in data}
+
+        windows = []
+        w_start = start_date
+        while w_start + timedelta(days=window_days) <= end_date + timedelta(days=1):
+            w_end = w_start + timedelta(days=window_days)
+            windows.append((w_start, min(w_end, end_date)))
+            w_start = w_end
+
+        total = len(multipliers) + len(windows)
+        step = [0]
+
+        def _pooled(s_date, e_date, mult, label):
+            if progress_callback:
+                progress_callback(step[0], total, label)
+            step[0] += 1
+            trades, per_sym = [], {}
+            for sym, bars in data.items():
+                try:
+                    res = self.run(
+                        sym, s_date, e_date, capital=capital,
+                        max_holding_days=max_holding_days,
+                        stop_atr_multiplier=mult,
+                        risk_pct_per_trade=risk_pct_per_trade,
+                        strategy=strategy_factory(), slippage_pct=slippage_pct,
+                        nifty_series=nifty_series, bars=bars,
+                        features_cache=caches[sym],
+                    )
+                except Exception as e:
+                    errors[f"{label}/{sym}"] = str(e)
+                    continue
+                trades.extend(res.trades)
+                per_sym[sym] = res.net_pnl if res.trade_count else None
+            return trades, per_sym
+
+        sensitivity, base_trades = [], []
+        for mult in multipliers:
+            trades, per_sym = _pooled(start_date, end_date, mult, f"stop {mult}x ATR")
+            sensitivity.append({"stop_atr_multiplier": mult, **_pool_stats(trades, per_sym)})
+            if mult == 2.0:
+                base_trades = sorted(trades, key=lambda t: t.exit_date)
+
+        walk_forward = []
+        for w_s, w_e in windows:
+            trades, per_sym = _pooled(w_s, w_e, 2.0, f"window {w_s.date()}")
+            walk_forward.append({"window": f"{w_s.date()} to {w_e.date()}", **_pool_stats(trades, per_sym)})
+
+        if progress_callback:
+            progress_callback(total, total, "")
+        return {
+            "sensitivity": sensitivity,
+            "walk_forward": walk_forward,
+            "base_trades": base_trades,
+            "errors": errors,
+        }
