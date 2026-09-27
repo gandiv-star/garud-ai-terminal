@@ -849,6 +849,80 @@ with tab_backtest:
                 st.error(f"Strategy comparison failed: {e}")
 
     st.divider()
+    st.subheader("Robustness check on many stocks (validate a winner)")
+    st.caption(
+        "Takes ONE strategy and stress-tests it across the whole stock list: (1) stop-loss sensitivity "
+        "1.0x-3.0x ATR, (2) walk-forward — the period is cut into separate time windows and each is judged "
+        "on its own, and (3) bootstrap on the pooled trades. A real edge should stay positive across most "
+        "stop settings AND most time windows. Uses the stock list and slippage from the multi-stock section."
+    )
+    rb_names = list(strategy_options.keys())
+    rb_strategy_name = st.selectbox(
+        "Strategy to validate", rb_names,
+        index=rb_names.index("Volatility Expansion") if "Volatility Expansion" in rb_names else 0,
+        key="rb_strategy",
+    )
+    rb_days = st.slider("Total period (days)", 730, 1825, 1095, step=365, key="rb_days")
+    rb_window = st.select_slider("Walk-forward window size (days)", options=[90, 180, 365], value=180, key="rb_window")
+
+    if st.button("Run robustness check"):
+        rb_symbols = [s.strip().upper() for s in mb_universe_input.split(",") if s.strip()]
+        if not rb_symbols:
+            st.warning("Enter at least one symbol in the multi-stock section.")
+        else:
+            rb_progress = st.progress(0.0, text="Downloading data...")
+
+            def _rb_progress(done, total, label):
+                text = f"{label} ({done + 1}/{total})..." if label else "Done"
+                rb_progress.progress(min(done / total, 1.0), text=text)
+
+            try:
+                rb_end = datetime.now()
+                rb_start = rb_end - timedelta(days=rb_days)
+                rb = BacktestEngine(ChargeModel()).robustness_multi(
+                    rb_symbols, rb_start, rb_end,
+                    strategy_factory=strategy_options[rb_strategy_name],
+                    window_days=rb_window, capital=bt_capital, slippage_pct=mb_slippage,
+                    progress_callback=_rb_progress,
+                )
+                if rb["errors"]:
+                    st.warning("Skipped: " + "; ".join(f"{k}: {v}" for k, v in rb["errors"].items()))
+
+                st.write("**1. Stop-loss sensitivity (full period, all stocks pooled):**")
+                st.dataframe(pd.DataFrame(rb["sensitivity"]), hide_index=True)
+                sens_pos = sum(1 for r in rb["sensitivity"] if r["net_pnl"] > 0)
+                st.write(f"**{sens_pos} of {len(rb['sensitivity'])} stop settings net positive.**")
+
+                st.write(f"**2. Walk-forward ({rb_window}-day windows, 2.0x stop):**")
+                if rb["walk_forward"]:
+                    st.dataframe(pd.DataFrame(rb["walk_forward"]), hide_index=True)
+                    wf_traded = [r for r in rb["walk_forward"] if r["trades"] > 0]
+                    wf_pos = sum(1 for r in wf_traded if r["net_pnl"] > 0)
+                    st.write(f"**{wf_pos} of {len(wf_traded)} windows (with trades) net positive.**")
+                else:
+                    st.info("Period too short for even one window.")
+
+                st.write("**3. Bootstrap on the pooled 2.0x trades:**")
+                if rb["base_trades"]:
+                    _show_bootstrap([t.net_pnl for t in rb["base_trades"]], bt_capital)
+                else:
+                    st.info("No trades at 2.0x.")
+
+                wf_ratio = (wf_pos / len(wf_traded)) if rb["walk_forward"] and wf_traded else 0
+                if sens_pos >= 4 and wf_ratio >= 0.6:
+                    st.success(
+                        "Passes the basic screen: positive across most stop settings and most time windows. "
+                        "Next step is paper trading — still not proof of a live edge."
+                    )
+                else:
+                    st.warning(
+                        "Does not pass the basic screen (needs 4+ of 5 stop settings AND 60%+ of windows positive). "
+                        "The comparison result may have been luck or one favourable period."
+                    )
+            except Exception as e:
+                st.error(f"Robustness check failed: {e}")
+
+    st.divider()
     st.subheader("Parameter sensitivity (stop-loss ATR multiplier)")
     st.caption(
         "Re-runs the same backtest with a range of stop-loss distances (1.0x-3.0x ATR) instead of just the "
