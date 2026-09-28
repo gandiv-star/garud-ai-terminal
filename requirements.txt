@@ -9,3 +9,4 @@ pytest
 yfinance
 streamlit
 plotly
+psycopg2-binary
