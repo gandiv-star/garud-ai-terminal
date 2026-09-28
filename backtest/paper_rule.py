@@ -61,8 +61,10 @@ class Rule:
 
     def describe(self) -> str:
         return (
-            f"{self.strategy_name} on {len(self.universe)} stocks | new entries only when NIFTY regime is "
-            f"{' or '.join(self.allowed_regimes)} | entry next open | stop {self.stop_atr_multiplier}x ATR | "
+            f"{self.strategy_name} on {len(self.universe)} stocks | "
+            + ("any NIFTY regime" if set(self.allowed_regimes) >= {"MODERATE_BULL", "WEAK_BULL", "SIDEWAYS", "WEAK_BEAR"}
+               else f"new entries only when NIFTY regime is {' or '.join(self.allowed_regimes)}")
+            + f" | entry next open | stop {self.stop_atr_multiplier}x ATR | "
             f"exit after {self.max_holding_days} trading days | risk {self.risk_pct}% of "
             f"Rs.{self.capital:,.0f} | registered {self.registered_on} | verdict after {self.target_trades} trades"
         )
@@ -70,7 +72,13 @@ class Rule:
 
 RULE_V1 = Rule("volatility_expansion_rule_v1", "v1 — 8 stocks", UNIVERSE_8, "2026-09-27")
 RULE_V2 = Rule("volatility_expansion_rule_v2_nifty50", "v2 — NIFTY 50", UNIVERSE_NIFTY50, "2026-09-28")
-RULES = (RULE_V1, RULE_V2)
+ALL_REGIMES = ("MODERATE_BULL", "WEAK_BULL", "SIDEWAYS", "WEAK_BEAR")
+# Pre-registered 28 Sep 2026 from the holding-period test (40-day exit helped 4 of 5
+# trend strategies); Trend Following had the largest gross P&L at 40 days. No regime filter.
+RULE_V3 = Rule("trend_following_40d_rule_v3_nifty50", "v3 — Trend 40d NIFTY 50", UNIVERSE_NIFTY50,
+               "2026-09-28", strategy_name="Trend Following", allowed_regimes=ALL_REGIMES,
+               max_holding_days=40)
+RULES = (RULE_V1, RULE_V2, RULE_V3)
 RULE_IDS = {r.rule_id for r in RULES}
 
 
