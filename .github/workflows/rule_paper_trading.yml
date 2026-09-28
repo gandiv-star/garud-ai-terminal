@@ -1,0 +1,32 @@
+name: Rule paper trading (automatic)
+
+on:
+  schedule:
+    - cron: "10 4 * * 1-5"   # 09:40 IST — entries at today's open + exits
+    - cron: "40 5 * * 1-5"   # 11:10 IST — retry if the first run was delayed/failed
+    - cron: "30 11 * * 1-5"  # 17:00 IST — exits after the close + daily Telegram summary
+  workflow_dispatch: {}       # "Run workflow" button for a manual run
+
+concurrency:
+  group: rule-paper-trading
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run rules
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TRADING_MODE: PAPER
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python backtest/run_rule_paper.py
