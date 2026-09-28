@@ -432,6 +432,14 @@ with tab_scanner:
 with tab_positions:
     st.subheader("📌 Rule-based paper trading (pre-registered)")
     st.caption(paper_rule.rule_description())
+    _db_kind = settings.database_url.split(":", 1)[0].split("+", 1)[0]
+    if _db_kind == "sqlite":
+        st.warning(
+            "⚠️ Storage: SQLite file on Streamlit Cloud — NOT persistent (can be wiped on reboot, "
+            "sleep or redeploy). Do not log official rule trades until DATABASE_URL points to a hosted database."
+        )
+    else:
+        st.success(f"✅ Storage: {_db_kind} (hosted — survives app restarts)")
     st.caption(
         "This rule is fixed. Signals use the last COMPLETED daily bar (during market hours today's "
         "unfinished bar is ignored), the same NIFTY regime rule as the backtest, and the same stop/size/"
