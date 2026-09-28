@@ -40,6 +40,26 @@ class AuditEventORM(Base):
     payload = Column(JSON, nullable=False)
 
 
+# One engine per database URL for the whole app process. Streamlit re-runs the
+# script on every click and the app creates Database(...) in many places; with a
+# hosted Postgres, a new engine each time would open a new connection pool each
+# time and could exhaust the server's connection limit.
+_ENGINES: dict = {}
+
+
+def _get_engine(url: str):
+    if url not in _ENGINES:
+        if url.startswith("sqlite"):
+            engine = create_engine(url)
+        else:
+            # pool_pre_ping: hosted Postgres (e.g. Neon) drops idle connections when
+            # it auto-suspends; pinging first transparently replaces dead ones.
+            engine = create_engine(url, pool_pre_ping=True, pool_recycle=300, pool_size=3, max_overflow=2)
+        Base.metadata.create_all(engine)
+        _ENGINES[url] = engine
+    return _ENGINES[url]
+
+
 class Database:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -47,9 +67,13 @@ class Database:
         self._session_factory = None
 
     def connect(self) -> None:
-        self._engine = create_engine(self.settings.database_url)
-        Base.metadata.create_all(self._engine)
+        self._engine = _get_engine(self.settings.database_url)
         self._session_factory = sessionmaker(bind=self._engine)
+
+    def backend(self) -> str:
+        """'sqlite', 'postgresql', ... — lets the app show whether trades are
+        stored somewhere that survives a restart."""
+        return self.settings.database_url.split(":", 1)[0].split("+", 1)[0]
 
     def _session(self):
         if self._session_factory is None:
