@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backtest import paper_rule  # noqa: E402
+from backtest import paper_rule, rule_report  # noqa: E402
 from config.settings import load_settings  # noqa: E402
 from database.db import Database  # noqa: E402
 from strategies.registry import STRATEGY_REGISTRY  # noqa: E402
@@ -62,6 +62,16 @@ def main() -> int:
     manual = os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch"
     if report.entries or report.exits or report.errors or evening or manual:
         send_telegram(text)
+
+    # Weekly report: Friday evening run (and every manual run, for checking).
+    now = paper_rule.now_ist()
+    if (evening and now.weekday() == 4) or manual:
+        try:
+            weekly = rule_report.weekly_report(db, STRATEGY_REGISTRY, now)
+        except Exception as e:
+            weekly = f"⚠️ Weekly report failed: {e}"
+        print(weekly)
+        send_telegram(weekly)
     return 0
 
 
