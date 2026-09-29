@@ -140,3 +140,21 @@ class Database:
             ]
         finally:
             session.close()
+
+    def get_audit_events(self, event_type: str, limit: int = 100) -> list:
+        """Newest first. Used to read stored rule benchmarks."""
+        session = self._session()
+        try:
+            rows = (
+                session.query(AuditEventORM)
+                .filter(AuditEventORM.event_type == event_type)
+                .order_by(AuditEventORM.timestamp.desc())
+                .limit(limit)
+                .all()
+            )
+            return [
+                AuditEvent(timestamp=r.timestamp, event_type=r.event_type, symbol=r.symbol, payload=r.payload)
+                for r in rows
+            ]
+        finally:
+            session.close()
