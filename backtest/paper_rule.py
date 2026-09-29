@@ -21,6 +21,7 @@ from datetime import datetime, time, timedelta, timezone
 
 from backtest.backtest_engine import ChargeModel, _nifty_series, _regime_at
 from core.constants import Decision
+from data.data_loader import Bar
 from data.yfinance_loader import YFinanceLoader
 from database.models import AuditEvent, TradeRecord
 from features.feature_engine import FeatureEngine
@@ -29,6 +30,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 MARKET_OPEN_IST = time(9, 15)
 MARKET_CLOSE_IST = time(15, 35)
 LOOKBACK_DAYS = 420
+GAP_WINDOW = 10          # recent NIFTY sessions checked for missing stock bars
 
 UNIVERSE_8 = ("HDFCBANK", "TCS", "SUNPHARMA", "MARUTI", "TATASTEEL", "HINDUNILVR", "RELIANCE", "DLF")
 
@@ -196,16 +198,55 @@ class MarketData:
 
     def bars(self, symbol: str) -> list:
         if symbol not in self._bars:
-            self._bars[symbol] = self._loader.get_historical_bars(symbol, self.start, self.end)
+            bars = self._loader.get_historical_bars(symbol, self.start, self.end)
+            self._bars[symbol] = self._fill_recent_gaps(symbol, bars)
         return self._bars[symbol]
 
-    def nifty_completed(self) -> list:
+    def nifty_all(self) -> list:
+        """NIFTY (date, close) including today's partial row if present."""
         if self._nifty is None:
-            series = _nifty_series(self.start, self.end)
-            if series and series[-1][0] == self.now.date() and self.now.time() < MARKET_CLOSE_IST:
-                series = series[:-1]
-            self._nifty = series
+            self._nifty = _nifty_series(self.start, self.end)
         return self._nifty
+
+    def nifty_completed(self) -> list:
+        series = self.nifty_all()
+        if series and series[-1][0] == self.now.date() and self.now.time() < MARKET_CLOSE_IST:
+            series = series[:-1]
+        return series
+
+    def _fill_recent_gaps(self, symbol: str, bars: list) -> list:
+        """yfinance sometimes omits a stock's latest daily row(s) that NIFTY already
+        has. For trading days in the last GAP_WINDOW NIFTY sessions that are missing,
+        rebuild the daily bar from 60-minute bars (open = first open, high/low =
+        extremes, close = last close, volume = sum). Anything that can't be rebuilt
+        is left missing and reported by scan()."""
+        expected = [d for d, _ in self.nifty_all()][-GAP_WINDOW:]
+        have = {_bar_date(b) for b in bars}
+        missing = [d for d in expected if d not in have]
+        if not missing:
+            return bars
+        try:
+            intraday = self._loader.get_historical_bars(
+                symbol, datetime.combine(min(missing), time(0)), self.end, interval="60m"
+            )
+        except Exception:
+            return bars
+        by_day: dict = {}
+        for b in intraday:
+            d = _bar_date(b)
+            if d in missing:
+                by_day.setdefault(d, []).append(b)
+        rebuilt = []
+        for d, day in by_day.items():
+            day.sort(key=lambda b: b.timestamp)
+            rebuilt.append(Bar(
+                symbol=symbol, timestamp=datetime.combine(d, time(0), IST),
+                open=day[0].open, high=max(b.high for b in day), low=min(b.low for b in day),
+                close=day[-1].close, volume=sum(b.volume for b in day),
+            ))
+        if not rebuilt:
+            return bars
+        return sorted(bars + rebuilt, key=_bar_date)
 
 
 @dataclass
