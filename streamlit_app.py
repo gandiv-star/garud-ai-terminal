@@ -12,6 +12,7 @@ from backtest.walk_forward import WalkForwardValidator
 from backtest.monte_carlo import MonteCarloSimulator
 from backtest.bootstrap import bootstrap_trades
 from backtest import paper_rule
+from backtest import rule_report
 from config.settings import load_settings
 from core.constants import Decision
 from data.data_validator import DataValidator
@@ -446,10 +447,23 @@ with tab_positions:
         _db_rules = Database(settings)
         _db_rules.connect()
         _rule_trades_all = [t for t in _db_rules.get_trades(limit=5000) if t.strategy_name in paper_rule.RULE_IDS]
+        try:
+            _benches = rule_report.stored_benchmarks(_db_rules)
+        except Exception:
+            _benches = {}
         for _rule in paper_rule.RULES:
             _s = paper_rule.rule_stats(_rule, _rule_trades_all)
             st.markdown(f"**{_rule.title}**")
             st.caption(_rule.describe())
+            _b = _benches.get(_rule.rule_id)
+            if _b and _b.get("trades"):
+                st.caption(f"Backtest 5y benchmark: {_b['trades']} trades | avg Rs.{_b['mean']}/trade | "
+                           f"win {_b['win_rate']}% | PF {_b['pf']}")
+            _closed_sorted = sorted(
+                [t for t in _s["trades"] if t.exit_price is not None and t.realized_pnl is not None],
+                key=lambda t: t.exit_timestamp,
+            )
+            st.write("**Status:** " + rule_report.checkpoint_status([t.realized_pnl for t in _closed_sorted], _b))
             _c1, _c2, _c3, _c4 = st.columns(4)
             _c1.metric("Closed", f"{_s['closed']}/{_rule.target_trades}")
             _c2.metric("Open", _s["open"])
