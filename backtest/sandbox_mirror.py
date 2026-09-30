@@ -82,7 +82,7 @@ def mirror(db, trades: list, broker: UpstoxSandboxBroker | None = None, now: dat
             continue
         except Exception as e:
             _save(db, EVENT_FAIL, o, {"error": str(e)[:300]})
-            report.failed.append(f"{o['symbol']} {o['side']}: {e}")
+            report.failed.append(f"{o['symbol']} {o['side']}: {str(e)[:150]}")
             continue
         if result.broker_order_id:
             # Must be recorded, otherwise the next run would place it again: no try/except here.
