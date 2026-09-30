@@ -29,6 +29,7 @@ jobs:
           TRADING_MODE: PAPER
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          UPSTOX_SANDBOX_TOKEN: ${{ secrets.UPSTOX_SANDBOX_TOKEN }}
         run: python backtest/run_rule_paper.py
       - name: Alert on failure
         if: failure()
