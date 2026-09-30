@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backtest import paper_rule, rule_report, sandbox_mirror  # noqa: E402
+from backtest import live_executor, paper_rule, rule_report, sandbox_mirror  # noqa: E402
 from config.settings import load_settings  # noqa: E402
 from database.db import Database  # noqa: E402
 from strategies.registry import STRATEGY_REGISTRY  # noqa: E402
@@ -47,6 +47,7 @@ def main() -> int:
 
     trades = db.get_trades(limit=5000)
     mirror = sandbox_mirror.mirror(db, trades, due_exits=report.due_time_exits, allow_entries=not kill_switch)
+    live = live_executor.execute(db, trades, due_exits=report.due_time_exits, allow_entries=not kill_switch)
     lines = [f"🦅 Garud rule paper trading — {report.started}"]
     lines += [f"🟢 {e}" for e in report.entries] or []
     lines += [f"🔴 {x}" for x in report.exits] or []
@@ -62,6 +63,9 @@ def main() -> int:
     lines += [f"🧪 Sandbox order: {p}" for p in mirror.placed]
     lines += [f"🧪❌ Sandbox failed: {f}" for f in mirror.failed[:8]]
     lines += [f"🧪 {n}" for n in mirror.notes]
+    lines += [f"💰 {a}" for a in live.actions]
+    lines += [f"💰❌ {e}" for e in live.errors[:8]]
+    lines += [f"💰 {n}" for n in live.notes if not n.startswith("Live trading OFF")]
     if mirror.unreconciled:
         lines.append(f"🧪⚠️ {len(mirror.unreconciled)} unreconciled: " + "; ".join(mirror.unreconciled[:5]))
 
@@ -70,7 +74,8 @@ def main() -> int:
 
     evening = paper_rule.now_ist().time() >= paper_rule.MARKET_CLOSE_IST
     manual = os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch"
-    if report.entries or report.exits or report.errors or mirror.placed or mirror.failed or evening or manual:
+    if (report.entries or report.exits or report.errors or mirror.placed or mirror.failed
+            or live.actions or live.errors or evening or manual):
         send_telegram(text)
 
     # Weekly report: Friday evening run (and every manual run, for checking).
