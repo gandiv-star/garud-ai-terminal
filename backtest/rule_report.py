@@ -76,12 +76,18 @@ def compute_benchmarks(rules, registry: dict) -> dict:
     return out
 
 
-def get_or_create_benchmarks(db, registry: dict) -> dict:
+def stored_benchmarks(db) -> dict:
+    """Benchmarks already saved in the database (never computes anything)."""
     stored = {}
     for ev in db.get_audit_events(BENCH_EVENT, limit=200):
         p = ev.payload or {}
         if p.get("version") == BENCH_VERSION and p.get("rule_id") not in stored:
             stored[p["rule_id"]] = p
+    return stored
+
+
+def get_or_create_benchmarks(db, registry: dict) -> dict:
+    stored = stored_benchmarks(db)
     missing = [r for r in paper_rule.RULES if r.rule_id not in stored]
     if missing:
         for rid, bench in compute_benchmarks(missing, registry).items():
