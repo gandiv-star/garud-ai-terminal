@@ -20,7 +20,7 @@ import os
 
 import requests
 
-from brokers.base_broker import OrderRequest, OrderResult, OrderStatus
+from brokers.base_broker import OrderRequest, OrderResult, OrderSide, OrderStatus
 from brokers.upstox_sandbox import UpstoxSandboxBroker
 
 LIVE_PLACE_URLS = ("https://api-hft.upstox.com/v3/order/place",)
@@ -28,6 +28,8 @@ CANCEL_URL = "https://api-hft.upstox.com/v3/order/cancel"
 ORDER_DETAILS_URL = "https://api.upstox.com/v2/order/details"
 GTT_PLACE_URL = "https://api.upstox.com/v3/order/gtt/place"
 GTT_CANCEL_URL = "https://api.upstox.com/v3/order/gtt/cancel"
+POSITIONS_URL = "https://api.upstox.com/v2/portfolio/short-term-positions"
+HOLDINGS_URL = "https://api.upstox.com/v2/portfolio/long-term-holdings"
 LIVE_MODES = ("CONTROLLED_LIVE", "LIVE")
 DEFAULT_MAX_ORDER_VALUE = 25000.0
 
@@ -80,6 +82,8 @@ class UpstoxLiveBroker(UpstoxSandboxBroker):
 
     def _pre_place_checks(self, order: OrderRequest) -> None:
         self._gate()
+        if order.side == OrderSide.SELL:
+            return  # exits reduce risk: never blocked by the value cap
         if not order.price or order.price <= 0:
             raise LiveOrdersDisabled("reference price (OrderRequest.price) is required for the value cap")
         value = order.quantity * order.price
@@ -97,6 +101,15 @@ class UpstoxLiveBroker(UpstoxSandboxBroker):
         if not resp.ok or (isinstance(body, dict) and body.get("status") != "success"):
             raise LiveBrokerError(f"HTTP {resp.status_code}: {str(body)[:300]}")
         return body
+
+    # -- portfolio (read-only; needs the registered static IP) ----------------------
+    def get_positions(self) -> dict:
+        self.authenticate()
+        return self._check(requests.get(POSITIONS_URL, headers=self._headers(), timeout=self.timeout))
+
+    def get_holdings(self) -> dict:
+        self.authenticate()
+        return self._check(requests.get(HOLDINGS_URL, headers=self._headers(), timeout=self.timeout))
 
     # -- orders ------------------------------------------------------------------
     def get_order_status(self, broker_order_id: str) -> OrderResult:
