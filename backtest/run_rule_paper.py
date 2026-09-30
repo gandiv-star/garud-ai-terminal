@@ -39,12 +39,14 @@ def main() -> int:
         print("DATABASE_URL is not set to the hosted database — refusing to run (trades would be lost).")
         return 1
 
+    kill_switch = os.getenv("GARUD_KILL_SWITCH", "").strip().upper() in ("ON", "1", "TRUE", "YES")
+
     db = Database(settings)
     db.connect()
-    report = paper_rule.run_all(db, STRATEGY_REGISTRY)
+    report = paper_rule.run_all(db, STRATEGY_REGISTRY, allow_entries=not kill_switch)
 
     trades = db.get_trades(limit=5000)
-    mirror = sandbox_mirror.mirror(db, trades)
+    mirror = sandbox_mirror.mirror(db, trades, due_exits=report.due_time_exits, allow_entries=not kill_switch)
     lines = [f"🦅 Garud rule paper trading — {report.started}"]
     lines += [f"🟢 {e}" for e in report.entries] or []
     lines += [f"🔴 {x}" for x in report.exits] or []
@@ -53,6 +55,8 @@ def main() -> int:
         lines.append(f"📊 {rule.title}: closed {s['closed']}/{rule.target_trades}, open {s['open']}, "
                      f"net Rs.{s['net_pnl']}" + (f", PF {s['profit_factor']}" if s["profit_factor"] else ""))
     lines += [f"ℹ️ {n}" for n in report.notes if "outside market hours" not in n]
+    if report.due_time_exits:
+        lines.append(f"⏰ {len(report.due_time_exits)} time exit(s) due at today's close — broker SELL sent before close")
     if report.errors:
         lines.append(f"⚠️ {len(report.errors)} data issue(s): " + "; ".join(report.errors[:8]))
     lines += [f"🧪 Sandbox order: {p}" for p in mirror.placed]

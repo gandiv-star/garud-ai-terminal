@@ -29,6 +29,9 @@ from features.feature_engine import FeatureEngine
 IST = timezone(timedelta(hours=5, minutes=30))
 MARKET_OPEN_IST = time(9, 15)
 MARKET_CLOSE_IST = time(15, 35)
+ENTRY_CUTOFF_IST = time(11, 30)      # entries after this would not fill near the open -> skipped
+PRE_CLOSE_START_IST = time(14, 30)   # window in which time exits due today are sent to the broker
+PRE_CLOSE_END_IST = time(15, 25)
 LOOKBACK_DAYS = 420
 GAP_WINDOW = 10          # recent NIFTY sessions checked for missing stock bars
 
@@ -145,6 +148,19 @@ def rule_exit(entry_timestamp: datetime, stop_price: float, bars: list, max_hold
             if held >= max_holding_days:
                 return "TIME_BASED", round(b.close, 2), d
     return None
+
+
+def time_exit_due_today(entry_timestamp: datetime, stop_price: float, bars: list, max_holding_days: int,
+                        now: datetime) -> bool:
+    """True if today's close is this trade's time exit (and the stop hasn't been hit):
+    today is a trading day and exactly max_holding_days-1 full days have passed since entry."""
+    if not bars or _bar_date(bars[-1]) != now.date():
+        return False
+    if rule_exit(entry_timestamp, stop_price, bars, max_holding_days, now) is not None:
+        return False
+    entry_date = _to_ist_date(entry_timestamp)
+    held = sum(1 for b in bars if entry_date < _bar_date(b) < now.date())
+    return held == max_holding_days - 1
 
 
 def rule_already_used(trades: list, rule_id: str, symbol: str, signal_date) -> str | None:
@@ -300,6 +316,7 @@ class RunReport:
     exits: list = field(default_factory=list)
     notes: list = field(default_factory=list)
     errors: list = field(default_factory=list)
+    due_time_exits: list = field(default_factory=list)   # internal_order_ids to sell before today's close
 
 
 def _audit(db, event_type: str, symbol: str | None, payload: dict) -> None:
@@ -334,7 +351,7 @@ def process_exits(db, rule: Rule, data: MarketData, trades: list, report: RunRep
 def process_entries(db, rule: Rule, strategy_factory, data: MarketData, trades: list,
                     report: RunReport) -> None:
     now = data.now
-    if not (MARKET_OPEN_IST <= now.time() < MARKET_CLOSE_IST):
+    if not (MARKET_OPEN_IST <= now.time() < ENTRY_CUTOFF_IST):
         report.notes.append(f"{rule.title}: outside market hours — entries only in the morning runs")
         return
     regime_value, regime_date, signals, errors = scan(rule, strategy_factory, data)
@@ -372,7 +389,20 @@ def process_entries(db, rule: Rule, strategy_factory, data: MarketData, trades: 
         report.entries.append(f"{rule.title}: {g.symbol} BUY @ {entry} stop {stop} qty {qty}")
 
 
-def run_all(db, strategy_registry: dict, now: datetime | None = None) -> RunReport:
+def find_due_time_exits(rule: Rule, data: MarketData, trades: list, report: RunReport) -> None:
+    if not (PRE_CLOSE_START_IST <= data.now.time() < PRE_CLOSE_END_IST):
+        return
+    for t in trades:
+        if t.strategy_name != rule.rule_id or t.exit_price is not None:
+            continue
+        try:
+            if time_exit_due_today(t.timestamp, t.stop_price, data.bars(t.symbol), rule.max_holding_days, data.now):
+                report.due_time_exits.append(t.internal_order_id)
+        except Exception as e:
+            report.errors.append(f"{rule.rule_id}/{t.symbol} pre-close check: {e}")
+
+
+def run_all(db, strategy_registry: dict, now: datetime | None = None, allow_entries: bool = True) -> RunReport:
     now = now or now_ist()
     report = RunReport(started=now.strftime("%Y-%m-%d %H:%M IST"))
     data = MarketData(now)
@@ -383,7 +413,15 @@ def run_all(db, strategy_registry: dict, now: datetime | None = None) -> RunRepo
         except Exception as e:
             report.errors.append(f"{rule.rule_id} exits: {e}")
         try:
+            find_due_time_exits(rule, data, trades, report)
+        except Exception as e:
+            report.errors.append(f"{rule.rule_id} pre-close: {e}")
+        if not allow_entries:
+            continue
+        try:
             process_entries(db, rule, strategy_registry[rule.strategy_name], data, trades, report)
         except Exception as e:
             report.errors.append(f"{rule.rule_id} entries: {e}")
+    if not allow_entries:
+        report.notes.append("⛔ Kill switch ON — no new entries (exits still processed)")
     return report

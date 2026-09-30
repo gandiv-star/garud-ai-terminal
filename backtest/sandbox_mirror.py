@@ -30,15 +30,16 @@ class MirrorReport:
     unreconciled: list = field(default_factory=list)
 
 
-def expected_orders(trades: list) -> list[dict]:
-    """Every rule trade implies a BUY at entry and, once closed, a SELL at exit."""
+def expected_orders(trades: list, due_exits: set | frozenset = frozenset()) -> list[dict]:
+    """Every rule trade implies a BUY at entry and a SELL at exit — the exit SELL is
+    sent before the close when a time exit is due today, otherwise once the trade is closed."""
     out = []
     for t in trades:
         if t.strategy_name not in paper_rule.RULE_IDS:
             continue
         out.append({"internal_order_id": f"{t.internal_order_id}:ENTRY", "symbol": t.symbol,
                     "side": "BUY", "quantity": t.quantity})
-        if t.exit_price is not None:
+        if t.exit_price is not None or t.internal_order_id in due_exits:
             out.append({"internal_order_id": f"{t.internal_order_id}:EXIT", "symbol": t.symbol,
                         "side": "SELL", "quantity": t.quantity})
     return out
@@ -53,7 +54,8 @@ def mirrored_orders(db) -> list[dict]:
     return list(rows.values())
 
 
-def mirror(db, trades: list, broker: UpstoxSandboxBroker | None = None, now: datetime | None = None) -> MirrorReport:
+def mirror(db, trades: list, broker: UpstoxSandboxBroker | None = None, now: datetime | None = None,
+           due_exits: list | None = None, allow_entries: bool = True) -> MirrorReport:
     report = MirrorReport()
     broker = broker or UpstoxSandboxBroker()
     if not broker.token:
@@ -62,13 +64,15 @@ def mirror(db, trades: list, broker: UpstoxSandboxBroker | None = None, now: dat
     now = now or paper_rule.now_ist()
     broker.after_hours = not (paper_rule.MARKET_OPEN_IST <= now.time() < paper_rule.MARKET_CLOSE_IST)
 
-    expected = expected_orders(trades)
+    expected = expected_orders(trades, frozenset(due_exits or []))
     done = {o["internal_order_id"] for o in mirrored_orders(db)}
     manager = OrderManager(broker=broker, dedup_window_seconds=0)
 
     for o in expected:
         if o["internal_order_id"] in done:
             continue
+        if o["side"] == "BUY" and not allow_entries:
+            continue  # kill switch: never open new broker positions; exits still go through
         req = OrderRequest(internal_order_id=o["internal_order_id"], symbol=o["symbol"], exchange="NSE",
                            side=OrderSide(o["side"]), quantity=o["quantity"], order_type="MARKET",
                            product_type="D")
