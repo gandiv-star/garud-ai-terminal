@@ -42,8 +42,12 @@ def load_nse_equity_keys(url: str = INSTRUMENTS_URL, timeout: int = 60) -> dict:
 
 
 class UpstoxSandboxBroker(BaseBroker):
+    PLACE_URLS = SANDBOX_PLACE_URLS
+    TOKEN_ENV = "UPSTOX_SANDBOX_TOKEN"
+    AUTH_HINT = "Sandbox token expired or invalid (HTTP 401) — generate a new one"
+
     def __init__(self, token: str | None = None, instrument_keys: dict | None = None, timeout: int = 20):
-        self.token = token if token is not None else os.getenv("UPSTOX_SANDBOX_TOKEN")
+        self.token = token if token is not None else os.getenv(self.TOKEN_ENV)
         self._keys = instrument_keys
         self.timeout = timeout
         self.after_hours = False  # True -> orders go as AMO (after-market orders)
@@ -80,15 +84,19 @@ class UpstoxSandboxBroker(BaseBroker):
             "is_amo": bool(after_hours),
         }
 
+    def _pre_place_checks(self, order: OrderRequest) -> None:
+        """Hook for subclasses (the live broker adds its safety gates here)."""
+
     # -- BaseBroker ----------------------------------------------------------
     def authenticate(self) -> None:
         if not self.token:
-            raise SandboxAuthError("UPSTOX_SANDBOX_TOKEN is not set")
+            raise SandboxAuthError(f"{self.TOKEN_ENV} is not set")
 
     def place_order(self, order: OrderRequest) -> OrderResult:
         self.authenticate()
+        self._pre_place_checks(order)
         payload = self.build_payload(order, self.after_hours)
-        for url in SANDBOX_PLACE_URLS:
+        for url in self.PLACE_URLS:
             resp = requests.post(url, headers=self._headers(), json=payload, timeout=self.timeout)
             if resp.status_code not in (404, 410):
                 break
@@ -97,7 +105,7 @@ class UpstoxSandboxBroker(BaseBroker):
         except ValueError:
             body = {"raw": resp.text[:500]}
         if resp.status_code == 401:
-            raise SandboxAuthError("Sandbox token expired or invalid (HTTP 401) — generate a new one")
+            raise SandboxAuthError(self.AUTH_HINT)
         data = (body.get("data") or {}) if isinstance(body, dict) else {}
         order_id = data.get("order_id") or ((data.get("order_ids") or [None])[0])
         if resp.ok and body.get("status") == "success" and order_id:
