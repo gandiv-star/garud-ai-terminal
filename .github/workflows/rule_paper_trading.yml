@@ -28,11 +28,17 @@ jobs:
       - name: Run rules
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          TRADING_MODE: PAPER
+          TRADING_MODE: ${{ vars.TRADING_MODE || 'PAPER' }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           UPSTOX_SANDBOX_TOKEN: ${{ secrets.UPSTOX_SANDBOX_TOKEN }}
           GARUD_KILL_SWITCH: ${{ vars.GARUD_KILL_SWITCH }}
+          # Live trading stays OFF unless ALL of these are set (see backtest/live_executor.py)
+          BROKER_ACCESS_TOKEN: ${{ secrets.BROKER_ACCESS_TOKEN }}
+          LIVE_ORDERS_ENABLED: ${{ vars.LIVE_ORDERS_ENABLED }}
+          LIVE_RULES: ${{ vars.LIVE_RULES }}
+          LIVE_START_DATE: ${{ vars.LIVE_START_DATE }}
+          LIVE_MAX_ORDER_VALUE: ${{ vars.LIVE_MAX_ORDER_VALUE }}
         run: python backtest/run_rule_paper.py
       - name: Alert on failure
         if: failure()
