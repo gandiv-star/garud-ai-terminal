@@ -13,7 +13,12 @@ import requests
 
 from brokers.base_broker import BaseBroker, OrderRequest, OrderResult, OrderStatus
 
-SANDBOX_BASE_URL = os.getenv("UPSTOX_SANDBOX_BASE_URL", "https://sandbox.upstox.com/v2")
+# Host verified from Upstox community usage (sandbox.upstox.com in the overview page does not resolve).
+# v2 place-order is marked deprecated, so v3 is tried if v2 answers 404/410.
+SANDBOX_PLACE_URLS = (
+    os.getenv("UPSTOX_SANDBOX_PLACE_URL", "https://api-sandbox.upstox.com/v2/order/place"),
+    "https://api-sandbox.upstox.com/v3/order/place",
+)
 INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
 ORDER_TAG = "garud"
 
@@ -83,15 +88,18 @@ class UpstoxSandboxBroker(BaseBroker):
     def place_order(self, order: OrderRequest) -> OrderResult:
         self.authenticate()
         payload = self.build_payload(order, self.after_hours)
-        resp = requests.post(f"{SANDBOX_BASE_URL}/order/place", headers=self._headers(),
-                             json=payload, timeout=self.timeout)
+        for url in SANDBOX_PLACE_URLS:
+            resp = requests.post(url, headers=self._headers(), json=payload, timeout=self.timeout)
+            if resp.status_code not in (404, 410):
+                break
         try:
             body = resp.json()
         except ValueError:
             body = {"raw": resp.text[:500]}
         if resp.status_code == 401:
             raise SandboxAuthError("Sandbox token expired or invalid (HTTP 401) — generate a new one")
-        order_id = (body.get("data") or {}).get("order_id") if isinstance(body, dict) else None
+        data = (body.get("data") or {}) if isinstance(body, dict) else {}
+        order_id = data.get("order_id") or ((data.get("order_ids") or [None])[0])
         if resp.ok and body.get("status") == "success" and order_id:
             return OrderResult(order.internal_order_id, order_id, OrderStatus.OPEN, raw_response=body)
         return OrderResult(order.internal_order_id, None, OrderStatus.REJECTED,
