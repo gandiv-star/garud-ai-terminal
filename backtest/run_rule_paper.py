@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backtest import paper_rule, rule_report  # noqa: E402
+from backtest import paper_rule, rule_report, sandbox_mirror  # noqa: E402
 from config.settings import load_settings  # noqa: E402
 from database.db import Database  # noqa: E402
 from strategies.registry import STRATEGY_REGISTRY  # noqa: E402
@@ -44,6 +44,7 @@ def main() -> int:
     report = paper_rule.run_all(db, STRATEGY_REGISTRY)
 
     trades = db.get_trades(limit=5000)
+    mirror = sandbox_mirror.mirror(db, trades)
     lines = [f"🦅 Garud rule paper trading — {report.started}"]
     lines += [f"🟢 {e}" for e in report.entries] or []
     lines += [f"🔴 {x}" for x in report.exits] or []
@@ -54,13 +55,18 @@ def main() -> int:
     lines += [f"ℹ️ {n}" for n in report.notes if "outside market hours" not in n]
     if report.errors:
         lines.append(f"⚠️ {len(report.errors)} data issue(s): " + "; ".join(report.errors[:8]))
+    lines += [f"🧪 Sandbox order: {p}" for p in mirror.placed]
+    lines += [f"🧪❌ Sandbox failed: {f}" for f in mirror.failed[:8]]
+    lines += [f"🧪 {n}" for n in mirror.notes]
+    if mirror.unreconciled:
+        lines.append(f"🧪⚠️ {len(mirror.unreconciled)} unreconciled: " + "; ".join(mirror.unreconciled[:5]))
 
     text = "\n".join(lines)
     print(text)
 
     evening = paper_rule.now_ist().time() >= paper_rule.MARKET_CLOSE_IST
     manual = os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch"
-    if report.entries or report.exits or report.errors or evening or manual:
+    if report.entries or report.exits or report.errors or mirror.placed or mirror.failed or evening or manual:
         send_telegram(text)
 
     # Weekly report: Friday evening run (and every manual run, for checking).
