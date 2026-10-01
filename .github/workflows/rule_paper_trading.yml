@@ -1,13 +1,22 @@
 name: Rule paper trading (automatic)
 
 on:
+  # Primary timing comes from an external scheduler (cron-job.org) calling
+  # workflow_dispatch with source=scheduler, because GitHub's own cron can start
+  # runs hours late. The GitHub cron below is only a back-up; every run is idempotent.
   schedule:
-    - cron: "10 4 * * 1-5"   # 09:40 IST — entries at today's open + exits
-    - cron: "40 5 * * 1-5"   # 11:10 IST — retry if the first run was delayed/failed (entries until 11:30)
-    - cron: "10 9 * * 1-5"   # 14:40 IST — time exits due today: broker SELL before the close
-    - cron: "35 9 * * 1-5"   # 15:05 IST — retry of the pre-close run
-    - cron: "30 11 * * 1-5"  # 17:00 IST — exits after the close + daily Telegram summary
-  workflow_dispatch: {}       # "Run workflow" button for a manual run
+    - cron: "10 4 * * 1-5"   # 09:40 IST
+    - cron: "25 4 * * 1-5"   # 09:55 IST
+    - cron: "40 5 * * 1-5"   # 11:10 IST
+    - cron: "10 9 * * 1-5"   # 14:40 IST
+    - cron: "35 9 * * 1-5"   # 15:05 IST
+    - cron: "30 11 * * 1-5"  # 17:00 IST
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "manual (always sends Telegram + weekly report) or scheduler"
+        required: false
+        default: "manual"
 
 concurrency:
   group: rule-paper-trading
@@ -33,6 +42,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           UPSTOX_SANDBOX_TOKEN: ${{ secrets.UPSTOX_SANDBOX_TOKEN }}
           GARUD_KILL_SWITCH: ${{ vars.GARUD_KILL_SWITCH }}
+          RUN_SOURCE: ${{ github.event.inputs.source || 'schedule' }}
           # Live trading stays OFF unless ALL of these are set (see backtest/live_executor.py)
           BROKER_ACCESS_TOKEN: ${{ secrets.BROKER_ACCESS_TOKEN }}
           LIVE_ORDERS_ENABLED: ${{ vars.LIVE_ORDERS_ENABLED }}
