@@ -5,8 +5,10 @@ exits to the hosted database (DATABASE_URL) and sends a Telegram summary when
 TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set. Safe to run any number of times:
 every write is idempotent.
 """
+import hashlib
 import json
 import os
+from datetime import datetime, timezone
 import sys
 import urllib.request
 from pathlib import Path
@@ -16,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from backtest import live_executor, paper_rule, rule_report, sandbox_mirror  # noqa: E402
 from config.settings import load_settings  # noqa: E402
 from database.db import Database  # noqa: E402
+from database.models import AuditEvent  # noqa: E402
 from strategies.registry import STRATEGY_REGISTRY  # noqa: E402
 
 
@@ -31,6 +34,23 @@ def send_telegram(text: str) -> None:
         urllib.request.urlopen(req, timeout=20).read()
     except Exception as e:
         print(f"Telegram send failed: {e}")
+
+
+def _first_time_today(db, kind: str, now, body: str = "") -> bool:
+    """True (and remembered) the first time this kind/content is seen today, so repeated
+    or delayed runs don't flood Telegram with identical messages."""
+    key = hashlib.sha256(body.encode()).hexdigest()[:16]
+    today = str(now.date())
+    try:
+        for ev in db.get_audit_events("TELEGRAM_SENT", limit=300):
+            p = ev.payload or {}
+            if p.get("date") == today and p.get("kind") == kind and p.get("hash") == key:
+                return False
+        db.save_audit_event(AuditEvent(timestamp=datetime.now(timezone.utc), event_type="TELEGRAM_SENT",
+                                       symbol=None, payload={"date": today, "kind": kind, "hash": key}))
+    except Exception as e:
+        print(f"Telegram de-duplication unavailable ({e}) — sending anyway")
+    return True
 
 
 def main() -> int:
@@ -72,15 +92,26 @@ def main() -> int:
     text = "\n".join(lines)
     print(text)
 
-    evening = paper_rule.now_ist().time() >= paper_rule.MARKET_CLOSE_IST
-    manual = os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch"
-    if (report.entries or report.exits or report.errors or mirror.placed or mirror.failed
-            or live.actions or live.errors or evening or manual):
+    now = paper_rule.now_ist()
+    evening = now.time() >= paper_rule.MARKET_CLOSE_IST
+    # Runs started by the external scheduler send RUN_SOURCE=scheduler; only a person
+    # pressing "Run workflow" (RUN_SOURCE=manual) gets the always-send behaviour.
+    manual = os.getenv("RUN_SOURCE", "").strip().lower() == "manual"
+    activity = (report.entries or report.exits or report.errors or mirror.placed or mirror.failed
+                or live.actions or live.errors or mirror.unreconciled)
+
+    if manual:
+        send_telegram(text)
+    elif activity:
+        # Same news twice in a day (e.g. a data issue that persists) is sent only once.
+        body = "\n".join(lines[1:])
+        if _first_time_today(db, "activity", now, body):
+            send_telegram(text)
+    elif evening and _first_time_today(db, "evening", now):
         send_telegram(text)
 
-    # Weekly report: Friday evening run (and every manual run, for checking).
-    now = paper_rule.now_ist()
-    if (evening and now.weekday() == 4) or manual:
+    # Weekly report: once on Friday evening (and on every manual run, for checking).
+    if manual or (evening and now.weekday() == 4 and _first_time_today(db, "weekly", now)):
         try:
             weekly = rule_report.weekly_report(db, STRATEGY_REGISTRY, now)
         except Exception as e:
