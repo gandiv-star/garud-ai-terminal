@@ -1051,6 +1051,8 @@ with tab_backtest:
     ps_capital = st.select_slider("Starting capital (Rs.)", options=[100000, 200000, 300000, 500000, 1000000],
                                   value=200000, key="ps_capital")
     ps_maxpos = st.slider("Max open positions", 3, 20, 10, key="ps_maxpos")
+    ps_risk = st.select_slider("Risk per trade (% of equity)", options=[0.25, 0.5, 0.75, 1.0], value=1.0,
+                               key="ps_risk", help="The rules use 1%. Lower risk = smaller positions = more fit in the cash.")
     if st.button("Run portfolio simulation"):
         _rules = [r for r in paper_rule.RULES if r.title in ps_sel]
         _key = tuple(r.rule_id for r in _rules)
@@ -1069,7 +1071,7 @@ with tab_backtest:
                     _bar.progress(1.0, text="Done")
                 _tr, _cl = st.session_state["ps_cache"]
                 _order = [r.rule_id for r in _rules]
-                _res = portfolio_sim.simulate(_tr, _cl, ps_capital, ps_maxpos, _order)
+                _res = portfolio_sim.simulate(_tr, _cl, ps_capital, ps_maxpos, _order, ps_risk)
                 p1, p2, p3, p4 = st.columns(4)
                 p1.metric("Final equity", f"Rs.{_res.final_equity:,.0f}", f"{_res.total_return_pct}%")
                 p2.metric("CAGR", f"{_res.cagr_pct}%")
@@ -1085,11 +1087,11 @@ with tab_backtest:
                 if _res.per_rule:
                     st.write("**By rule:**")
                     st.dataframe(pd.DataFrame(_res.per_rule), hide_index=True)
-                st.write("**Same rules at other capital levels:**")
+                st.write(f"**Same rules at other risk levels (capital Rs.{ps_capital:,}, {ps_maxpos} positions):**")
                 _rows = []
-                for _cap in (100000, 200000, 300000, 500000, 1000000):
-                    _r = portfolio_sim.simulate(_tr, _cl, _cap, ps_maxpos, _order)
-                    _rows.append({"capital": _cap, "trades": _r.trades_taken,
+                for _rk in (0.25, 0.5, 0.75, 1.0):
+                    _r = portfolio_sim.simulate(_tr, _cl, ps_capital, ps_maxpos, _order, _rk)
+                    _rows.append({"risk_%": _rk, "trades": _r.trades_taken,
                                   "skipped_no_cash": _r.skipped["no_cash"],
                                   "skipped_max_positions": _r.skipped["max_positions"],
                                   "return_%": _r.total_return_pct, "CAGR_%": _r.cagr_pct,
