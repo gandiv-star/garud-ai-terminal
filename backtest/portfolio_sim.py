@@ -85,12 +85,17 @@ def collect_trades(rules, registry: dict, end_date, days: int = 1825, progress=N
                 if t.quantity > 0:
                     trades.append(SimTrade(rule.rule_id, sym, _d(t.entry_date), _d(t.exit_date),
                                            float(t.entry_price), float(t.exit_price), int(t.quantity)))
-    closes = {s: {_d(b.timestamp): float(b.close) for b in bars} for s, bars in data.items()}
+    # Only the simulation window — the 400-day indicator warm-up must not count as
+    # "flat" days (it diluted CAGR and average capital invested).
+    first = start.date()
+    closes = {s: {_d(b.timestamp): float(b.close) for b in bars if _d(b.timestamp) >= first}
+              for s, bars in data.items()}
     return trades, closes
 
 
 def simulate(trades: list, closes: dict, capital: float, max_positions: int = 10,
-             rule_order: list | None = None) -> SimResult:
+             rule_order: list | None = None, risk_pct: float = 1.0) -> SimResult:
+    """risk_pct: % of current equity risked per trade (the rules use 1.0)."""
     cm = ChargeModel()
     order = {rid: i for i, rid in enumerate(rule_order or [])}
     entries = {}
@@ -135,7 +140,7 @@ def simulate(trades: list, closes: dict, capital: float, max_positions: int = 10
             if len(open_pos) >= max_positions:
                 skipped["max_positions"] += 1
                 continue
-            qty = int(t.base_qty * equity / BASE_CAPITAL)
+            qty = int(t.base_qty * equity / BASE_CAPITAL * risk_pct / 1.0)
             unit = t.entry_price * (1 + 0.002)          # leave room for buy charges
             qty = min(qty, int(cash / unit)) if unit > 0 else 0
             if qty <= 0:
