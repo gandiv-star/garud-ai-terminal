@@ -13,6 +13,7 @@ from backtest.monte_carlo import MonteCarloSimulator
 from backtest.bootstrap import bootstrap_trades
 from backtest import paper_rule
 from backtest import rule_report
+from backtest import portfolio_sim
 from config.settings import load_settings
 from core.constants import Decision
 from data.data_validator import DataValidator
@@ -433,7 +434,7 @@ with tab_scanner:
 with tab_positions:
     st.subheader("📌 Automatic rule paper trading")
     st.caption(
-        "Fully automatic: a GitHub Actions job runs every weekday (09:40, 11:10 and 17:00 IST), "
+        "Fully automatic: runs every weekday at 09:40, 11:10, 14:40, 15:05 and 17:00 IST (cron-job.org + GitHub Actions), "
         "records entries at the day's open and exits by the rules, and sends a Telegram summary. "
         "This page is read-only."
     )
@@ -1035,6 +1036,69 @@ with tab_backtest:
                     )
             except Exception as e:
                 st.error(f"Robustness check failed: {e}")
+
+    st.divider()
+    st.subheader("Portfolio simulation (all rules, one capital)")
+    st.caption(
+        "Runs the automatic paper-trading rules TOGETHER on one pool of money over the same 5 years as "
+        "their benchmarks: shared cash, a cap on open positions, one position per stock, 1% risk of current "
+        "equity, real charges, daily mark-to-market. Shows how much capital the rules really need and how "
+        "deep the combined drawdown gets. First run collects trades (a few minutes); changing capital or "
+        "positions afterwards is instant."
+    )
+    _ps_titles = [r.title for r in paper_rule.RULES]
+    ps_sel = st.multiselect("Rules", _ps_titles, default=_ps_titles, key="ps_rules")
+    ps_capital = st.select_slider("Starting capital (Rs.)", options=[100000, 200000, 300000, 500000, 1000000],
+                                  value=200000, key="ps_capital")
+    ps_maxpos = st.slider("Max open positions", 3, 20, 10, key="ps_maxpos")
+    if st.button("Run portfolio simulation"):
+        _rules = [r for r in paper_rule.RULES if r.title in ps_sel]
+        _key = tuple(r.rule_id for r in _rules)
+        if not _rules:
+            st.warning("Select at least one rule.")
+        else:
+            try:
+                if st.session_state.get("ps_cache_key") != _key:
+                    _bar = st.progress(0.0, text="Collecting trades...")
+                    _tr, _cl = portfolio_sim.collect_trades(
+                        _rules, STRATEGY_REGISTRY, rule_report.BENCHMARK_END,
+                        progress=lambda d, t, lbl: _bar.progress(min(d / t, 1.0), text=lbl),
+                    )
+                    st.session_state["ps_cache"] = (_tr, _cl)
+                    st.session_state["ps_cache_key"] = _key
+                    _bar.progress(1.0, text="Done")
+                _tr, _cl = st.session_state["ps_cache"]
+                _order = [r.rule_id for r in _rules]
+                _res = portfolio_sim.simulate(_tr, _cl, ps_capital, ps_maxpos, _order)
+                p1, p2, p3, p4 = st.columns(4)
+                p1.metric("Final equity", f"Rs.{_res.final_equity:,.0f}", f"{_res.total_return_pct}%")
+                p2.metric("CAGR", f"{_res.cagr_pct}%")
+                p3.metric("Max drawdown", f"{_res.max_drawdown_pct}%")
+                p4.metric("Trades taken", _res.trades_taken)
+                q1, q2, q3 = st.columns(3)
+                q1.metric("Max open positions", _res.max_open_positions)
+                q2.metric("Avg capital invested", f"{_res.avg_invested_pct}%")
+                q3.metric("Skipped entries", sum(_res.skipped.values()))
+                st.caption("Skipped: " + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in _res.skipped.items()))
+                if _res.equity_curve:
+                    st.line_chart(pd.DataFrame(_res.equity_curve, columns=["date", "equity"]).set_index("date"))
+                if _res.per_rule:
+                    st.write("**By rule:**")
+                    st.dataframe(pd.DataFrame(_res.per_rule), hide_index=True)
+                st.write("**Same rules at other capital levels:**")
+                _rows = []
+                for _cap in (100000, 200000, 300000, 500000, 1000000):
+                    _r = portfolio_sim.simulate(_tr, _cl, _cap, ps_maxpos, _order)
+                    _rows.append({"capital": _cap, "trades": _r.trades_taken,
+                                  "skipped_no_cash": _r.skipped["no_cash"],
+                                  "skipped_max_positions": _r.skipped["max_positions"],
+                                  "return_%": _r.total_return_pct, "CAGR_%": _r.cagr_pct,
+                                  "max_DD_%": _r.max_drawdown_pct})
+                st.dataframe(pd.DataFrame(_rows), hide_index=True)
+                st.caption("These are historical simulations of rules that have NOT yet passed forward testing — "
+                           "use them to size capital and expect drawdowns, not to predict returns.")
+            except Exception as e:
+                st.error(f"Portfolio simulation failed: {e}")
 
     st.divider()
     st.subheader("Parameter sensitivity (stop-loss ATR multiplier)")
