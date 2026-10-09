@@ -46,6 +46,25 @@ def _d(ts):
     return ts.date() if hasattr(ts, "date") else ts
 
 
+def _despike(px: list, max_len: int = 5) -> list:
+    """Bad ticks: a jump of more than 2x (or a fall of more than half) that is undone within
+    max_len days is replaced by the last good price. A lasting move (e.g. a split) is left alone."""
+    out = list(px)
+    i = 1
+    while i < len(out):
+        a, b = out[i - 1], out[i]
+        if a and b and (b / a > 2 or b / a < 0.5):
+            back = next((j for j in range(i + 1, min(i + 1 + max_len, len(out)))
+                         if out[j] and 0.8 < out[j] / a < 1.25), None)
+            if back is not None:
+                for k in range(i, back):
+                    out[k] = a
+                i = back
+                continue
+        i += 1
+    return out
+
+
 class Market:
     """Daily closes on the NIFTY trading calendar (forward-filled a few days)."""
 
@@ -61,7 +80,7 @@ class Market:
                 else:
                     age += 1
                 out.append(last if age <= FFILL_MAX else None)
-            self.px[sym] = out
+            self.px[sym] = _despike(out)
 
     def price(self, sym, i):
         s = self.px.get(sym)
