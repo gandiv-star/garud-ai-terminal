@@ -77,9 +77,9 @@ class Market:
         return (b / a - 1) if a and b else None
 
 
-def load(universe, end_date: date, aliases: dict | None = None) -> tuple:
+def load(universe, end_date: date, aliases: dict | None = None, eval_days: int = EVAL_DAYS) -> tuple:
     end = datetime.combine(end_date, datetime.min.time()) + timedelta(days=1)
-    eval_start = end - timedelta(days=EVAL_DAYS)
+    eval_start = end - timedelta(days=eval_days)
     data_start = eval_start - timedelta(days=LOOKBACK_DAYS)
     nifty = _nifty_series(data_start, end)
     loader, closes, errors = YFinanceLoader(), {}, {}
@@ -94,7 +94,7 @@ def load(universe, end_date: date, aliases: dict | None = None) -> tuple:
     for sym in list(universe) + [ETF]:
         series, err = fetch(sym)
         for alt in (aliases or {}).get(sym, ()):
-            if series and min(series) <= _d(eval_start) - timedelta(days=LOOKBACK_DAYS - 30):
+            if series and min(series) <= _d(data_start) + timedelta(days=30):
                 break                      # primary already covers the whole window
             alt_series, _ = fetch(alt)
             if alt_series:
@@ -200,11 +200,11 @@ def yearly(curve: list) -> dict:
     return res
 
 
-def run(mkt: Market, eval_start: date, current=None, members_fn=None) -> dict:
+def run(mkt: Market, eval_start: date, current=None, members_fn=None, train_days: int = TRAIN_DAYS) -> dict:
     """current: today's index list (D/E). members_fn(date) -> list on that date (F/G)."""
     start_i = bisect_right(mkt.dates, eval_start) - 1
     start_i = max(start_i, 0)
-    split = mkt.dates[start_i] + timedelta(days=TRAIN_DAYS)
+    split = mkt.dates[start_i] + timedelta(days=train_days)
     end = mkt.dates[-1]
     rebal = month_end_indices(mkt.dates, start_i)
     stocks = [s for s in mkt.px if s != ETF and (current is None or s in current)]
