@@ -21,6 +21,10 @@ Verdict per strategy (C, D, E)
   BETTER THAN INDEX : full-period CAGR/MaxDD higher than buy & hold
   Paper-trade candidate only if both.
 Known bias: D/E use TODAY's NIFTY 50 list (survivorship) -> their results are optimistic.
+
+Addendum (registered 9 Oct 2026, before running): F/G = D/E with the point-in-time NIFTY 50
+list (backtest/nifty50_history.py): at each month end only stocks in the index ON THAT DATE can
+be bought; a stock that leaves the index is sold at the next rebalance. Same verdict rules.
 """
 from bisect import bisect_right
 from datetime import date, datetime, timedelta
@@ -73,18 +77,33 @@ class Market:
         return (b / a - 1) if a and b else None
 
 
-def load(universe, end_date: date) -> tuple:
+def load(universe, end_date: date, aliases: dict | None = None) -> tuple:
     end = datetime.combine(end_date, datetime.min.time()) + timedelta(days=1)
     eval_start = end - timedelta(days=EVAL_DAYS)
     data_start = eval_start - timedelta(days=LOOKBACK_DAYS)
     nifty = _nifty_series(data_start, end)
     loader, closes, errors = YFinanceLoader(), {}, {}
-    for sym in list(universe) + [ETF]:
+
+    def fetch(sym):
         try:
             bars = loader.get_historical_bars(sym, data_start, end)
-            closes[sym] = {_d(b.timestamp): float(b.close) for b in bars}
+            return {_d(b.timestamp): float(b.close) for b in bars}, None
         except Exception as e:
-            errors[sym] = str(e)
+            return {}, str(e)
+
+    for sym in list(universe) + [ETF]:
+        series, err = fetch(sym)
+        for alt in (aliases or {}).get(sym, ()):
+            if series and min(series) <= _d(eval_start) - timedelta(days=LOOKBACK_DAYS - 30):
+                break                      # primary already covers the whole window
+            alt_series, _ = fetch(alt)
+            if alt_series:
+                from backtest.nifty50_history import stitch
+                series = stitch(series, alt_series)
+        if series:
+            closes[sym] = series
+        else:
+            errors[sym] = err or "no data"
     if not closes.get(ETF):
         closes[ETF] = dict(nifty)          # fallback: price index, no dividends
         errors[ETF] = "NIFTYBEES unavailable — used ^NSEI price index"
@@ -181,16 +200,18 @@ def yearly(curve: list) -> dict:
     return res
 
 
-def run(mkt: Market, eval_start: date) -> dict:
+def run(mkt: Market, eval_start: date, current=None, members_fn=None) -> dict:
+    """current: today's index list (D/E). members_fn(date) -> list on that date (F/G)."""
     start_i = bisect_right(mkt.dates, eval_start) - 1
     start_i = max(start_i, 0)
     split = mkt.dates[start_i] + timedelta(days=TRAIN_DAYS)
     end = mkt.dates[-1]
     rebal = month_end_indices(mkt.dates, start_i)
-    stocks = [s for s in mkt.px if s != ETF]
+    stocks = [s for s in mkt.px if s != ETF and (current is None or s in current)]
 
-    def top_momentum(i):
-        scored = [(m, s) for s in stocks if (m := mkt.momentum(s, i)) is not None and mkt.price(s, i)]
+    def top_momentum(i, pool=None):
+        pool = stocks if pool is None else [s for s in pool if s in mkt.px and s != ETF]
+        scored = [(m, s) for s in pool if (m := mkt.momentum(s, i)) is not None and mkt.price(s, i)]
         scored.sort(reverse=True)
         picks = [s for _, s in scored[:TOP_N]]
         return {s: 1.0 / TOP_N for s in picks}
@@ -201,6 +222,12 @@ def run(mkt: Market, eval_start: date) -> dict:
         "D Momentum top-10": (top_momentum, [start_i - 1] + rebal),
         "E Momentum + regime": (lambda i: top_momentum(i) if mkt.regime_bull(i) else {}, [start_i - 1] + rebal),
     }
+    if members_fn is not None:
+        def pit(i):
+            return top_momentum(i, members_fn(mkt.dates[i]))
+        strategies["F Momentum top-10 (true list)"] = (pit, [start_i - 1] + rebal)
+        strategies["G Momentum + regime (true list)"] = (
+            lambda i: pit(i) if mkt.regime_bull(i) else {}, [start_i - 1] + rebal)
     days_total = (end - mkt.dates[start_i]).days
     fd_curve = [(d, CAPITAL * (1 + FD_RATE) ** ((d - mkt.dates[start_i]).days / 365))
                 for d in mkt.dates[start_i:]]
@@ -215,7 +242,7 @@ def run(mkt: Market, eval_start: date) -> dict:
 
     bh = next(r for r in rows if r["strategy"].startswith("B"))
     for r in rows:
-        if r["strategy"][0] in "CDE":
+        if r["strategy"][0] in "CDEFG":
             beats_fd = (r["full"]["cagr"] or -99) > FD_RATE * 100 and (r["test"]["cagr"] or -99) > FD_RATE * 100
             better = (r["full"]["ratio"] or -99) > (bh["full"]["ratio"] or -99)
             r["beats_fd"], r["better_than_index"] = beats_fd, better

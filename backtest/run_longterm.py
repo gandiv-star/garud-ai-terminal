@@ -12,7 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backtest import longterm as lt  # noqa: E402
-from backtest import paper_rule, rule_report  # noqa: E402
+from backtest import nifty50_history as nh  # noqa: E402
+from backtest import rule_report  # noqa: E402
 
 
 def send_telegram(text: str) -> None:
@@ -45,15 +46,16 @@ def summary_text(res: dict, errors: dict) -> str:
     for r in res["rows"]:
         lines.append(f"{r['strategy'][:1]}: " + " | ".join(f"{y}:{r['yearly'].get(y, '-')}" for y in years))
     lines.append("")
-    lines.append("⚠️ D/E use today's NIFTY 50 list (survivorship bias) → optimistic.")
+    lines.append("⚠️ D/E use today's NIFTY 50 list (survivorship bias) → optimistic. "
+                 "F/G use the true list on each date → the honest test.")
     if errors:
-        lines.append(f"Data notes: {len(errors)} — " + "; ".join(f"{k}: {v}" for k, v in list(errors.items())[:5]))
+        lines.append(f"Data notes: {len(errors)} — " + "; ".join(f"{k}: {v[:60]}" for k, v in list(errors.items())[:8]))
     return "\n".join(lines)
 
 
 def main() -> int:
-    mkt, eval_start, errors = lt.load(paper_rule.UNIVERSE_NIFTY50, rule_report.BENCHMARK_END)
-    res = lt.run(mkt, eval_start)
+    mkt, eval_start, errors = lt.load(nh.all_symbols(), rule_report.BENCHMARK_END, nh.ALIASES)
+    res = lt.run(mkt, eval_start, current=set(nh.CURRENT), members_fn=nh.members_on)
     years = sorted({y for r in res["rows"] for y in r["yearly"]})
     with open("longterm_yearly.csv", "w", newline="") as f:
         w = csv.writer(f)
@@ -71,7 +73,7 @@ def main() -> int:
             from database.models import AuditEvent
             db = Database(load_settings())
             db.connect()
-            payload = json.loads(json.dumps({**res, "version": 1, "registered": "2026-10-08"}, default=str))
+            payload = json.loads(json.dumps({**res, "version": 2, "registered": "2026-10-08/09"}, default=str))
             db.save_audit_event(AuditEvent(timestamp=datetime.now(timezone.utc),
                                            event_type="LONGTERM_COMPARISON", symbol=None, payload=payload))
             print("Saved to database (LONGTERM_COMPARISON).")
