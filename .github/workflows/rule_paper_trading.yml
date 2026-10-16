@@ -50,6 +50,17 @@ jobs:
           LIVE_START_DATE: ${{ vars.LIVE_START_DATE }}
           LIVE_MAX_ORDER_VALUE: ${{ vars.LIVE_MAX_ORDER_VALUE }}
         run: python backtest/run_rule_paper.py
+      - name: Run options paper (NIFTY iron condor, no orders)
+        if: success() || failure()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TRADING_MODE: PAPER
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+          GARUD_KILL_SWITCH: ${{ vars.GARUD_KILL_SWITCH }}
+          RUN_SOURCE: ${{ github.event.inputs.source || 'schedule' }}
+        run: python backtest/run_options_paper.py
       - name: Alert on failure
         if: failure()
         env:
