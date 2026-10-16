@@ -42,9 +42,18 @@ from strategies.volatility_expansion import VolatilityExpansionStrategy
 from strategies.volume_breakout import VolumeBreakoutStrategy
 from strategies.registry import STRATEGY_REGISTRY, all_strategy_instances, strategy_names
 
-st.set_page_config(page_title="Garud AI Terminal", layout="wide")
+st.set_page_config(page_title="Garud", page_icon="🦅", layout="wide")
 
 settings = load_settings()
+
+# Mobile app screens (🏠 આજ / 📈 Trades / 🎯 Options / 🔬 સંશોધન). The older full terminal
+# below is shown only under 🛠 Tools.
+import garud_mobile as mobile  # noqa: E402
+
+_view = mobile.nav(settings)
+if _view != "tools":
+    mobile.render(_view, settings)
+    st.stop()
 
 # Regime -> strategy-family suitability guide (Final Master Command's
 # "AI Strategy Orchestrator" concept). This is general domain guidance,
@@ -62,8 +71,7 @@ STRATEGY_FAMILY_GUIDE = {
     "STRONG_BEAR": {"favor": [], "avoid": ["Momentum", "Breakout", "Volume Breakout", "Volatility Expansion", "Trend Following"]},
 }
 
-st.title("Garud AI Terminal")
-st.caption("Skeleton-stage dashboard — shows what's actually built so far")
+st.subheader("🛠 Tools — full analysis terminal")
 
 if "kill_switch_engaged" not in st.session_state:
     st.session_state["kill_switch_engaged"] = not settings.kill_switch_enabled
