@@ -24,10 +24,7 @@ premium); the long wings cap the loss of every trade. A robot keeps the rules ex
                return on Rs.1,00,000 beats FD 7%.
 Storage: audit events OPT_ENTRY / OPT_EXIT (payload JSON); every write is idempotent.
 """
-import json
 import os
-import urllib.parse
-import urllib.request
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 
@@ -64,17 +61,16 @@ class UpstoxData:
         self.token = token if token is not None else os.getenv("UPSTOX_ANALYTICS_TOKEN", "").strip()
 
     def _get(self, path: str, params: dict) -> dict:
+        """Uses `requests` (same as the working sandbox broker): Upstox's Cloudflare
+        rejects Python's default urllib client with error 1010."""
+        import requests
         if not self.token:
             raise RuntimeError("UPSTOX_ANALYTICS_TOKEN secret is not set")
-        url = f"{API}{path}?{urllib.parse.urlencode(params)}"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self.token}",
-                                                   "Accept": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                body = json.loads(r.read().decode())
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode(errors="ignore")[:200]
-            raise RuntimeError(f"Upstox {path} HTTP {e.code}: {detail}") from None
+        resp = requests.get(f"{API}{path}", params=params, timeout=30,
+                            headers={"Authorization": f"Bearer {self.token}", "Accept": "application/json"})
+        if resp.status_code != 200:
+            raise RuntimeError(f"Upstox {path} HTTP {resp.status_code}: {resp.text[:200]}")
+        body = resp.json()
         if body.get("status") != "success":
             raise RuntimeError(f"Upstox {path}: {str(body)[:200]}")
         return body
