@@ -6,6 +6,8 @@ Gates (all required, checked every run):
   * LIVE_START_DATE (YYYY-MM-DD): only paper trades entered on/after this date are traded live
   * kill switch (GARUD_KILL_SWITCH) blocks new BUYs; exits always continue
   * per-order value cap LIVE_MAX_ORDER_VALUE (qty is reduced to fit, never increased)
+  * portfolio guard (backtest/live_guard.py): total capital, max open positions, max % per
+    stock, monthly loss limit (daily limit optional, off by default) — BUYs only; exits never blocked
 
 Per paper trade (idempotent — every step is recorded as a LIVE_* audit event):
   1. ENTRY  : MARKET BUY on the paper entry day, before the entry cutoff (never chased later)
@@ -18,7 +20,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
-from backtest import paper_rule
+from backtest import live_guard, paper_rule
 from brokers.base_broker import OrderRequest, OrderSide, OrderStatus
 from brokers.upstox_live import LiveBrokerError, LiveOrdersDisabled, UpstoxLiveBroker, live_orders_allowed, max_order_value
 from brokers.upstox_sandbox import SandboxAuthError
@@ -78,6 +80,25 @@ def live_quantity(paper_qty: int, price: float) -> int:
     return max(0, min(int(paper_qty), int(max_order_value() // price))) if price > 0 else 0
 
 
+def live_book(trades: list, entries: dict, exits: dict) -> live_guard.Book:
+    """Open live positions (value at paper entry price) and realised live P&L, scaled from
+    the paper trade by live qty / paper qty."""
+    by_id = {t.internal_order_id: t for t in trades}
+    open_pos, realised = [], []
+    for tid, e in entries.items():
+        t = by_id.get(tid)
+        qty = int(e.get("qty") or 0)
+        if t is None or qty <= 0:
+            continue
+        if tid not in exits:
+            open_pos.append((t.symbol, qty * t.entry_price))
+        elif str(exits[tid].get("note", "")).startswith("entry"):
+            continue                       # the live BUY was rejected/cancelled: no money involved
+        elif t.realized_pnl is not None and t.exit_timestamp is not None and t.quantity:
+            realised.append((paper_rule._to_ist_date(t.exit_timestamp), t.realized_pnl * qty / t.quantity))
+    return live_guard.Book(open_pos, realised)
+
+
 def execute(db, trades: list, due_exits: list | None = None, allow_entries: bool = True,
             broker=None, now: datetime | None = None) -> LiveReport:
     report = LiveReport()
@@ -90,6 +111,10 @@ def execute(db, trades: list, due_exits: list | None = None, allow_entries: bool
     now = now or paper_rule.now_ist()
     due = set(due_exits or [])
     entries, gtts, exits = _events(db, EV_ENTRY), _events(db, EV_GTT), _events(db, EV_EXIT)
+    try:
+        guard = live_guard.GuardConfig.from_env()
+    except Exception:                      # never let a bad setting stop exits
+        guard = live_guard.GuardConfig()
 
     for t in trades:
         if t.strategy_name not in rules or paper_rule._to_ist_date(t.timestamp) < start:
@@ -106,6 +131,12 @@ def execute(db, trades: list, due_exits: list | None = None, allow_entries: bool
                 qty = live_quantity(t.quantity, t.entry_price)
                 if qty <= 0:
                     report.errors.append(f"{t.symbol}: live qty 0 under LIVE_MAX_ORDER_VALUE")
+                    continue
+                qty, why = live_guard.allowed_qty(guard, live_book(trades, entries, exits), t.symbol,
+                                                  t.entry_price, qty, now.date())
+                if why:
+                    report.notes.append(f"🛡 {t.symbol}: {why}")
+                if qty <= 0:
                     continue
                 res = broker.place_order(OrderRequest(f"{tid}:LIVE_ENTRY", t.symbol, "NSE", OrderSide.BUY, qty,
                                                       "MARKET", price=t.entry_price, product_type="D"))
@@ -127,6 +158,21 @@ def execute(db, trades: list, due_exits: list | None = None, allow_entries: bool
                         broker.cancel_gtt(gtts[tid]["gtt_id"])
                     except LiveBrokerError:
                         pass  # already triggered/cancelled — the holding check below decides
+                never_filled = None
+                if tid not in gtts:
+                    # No stop was placed, so the BUY may never have filled: cancel it if still
+                    # pending (no orphan position later) and remember if nothing was bought.
+                    try:
+                        st = broker.get_order_status(entry["order_id"])
+                        if st.status in (OrderStatus.PENDING, OrderStatus.OPEN, OrderStatus.PARTIALLY_FILLED):
+                            try:
+                                broker.cancel_order(entry["order_id"])
+                            except Exception:
+                                pass
+                        if st.status in (OrderStatus.REJECTED, OrderStatus.CANCELLED) or not st.filled_quantity:
+                            never_filled = st.status.value
+                    except Exception:
+                        pass               # unknown — the holding check below still decides
                 held = min(held_quantity(broker, t.symbol), int(entry["qty"]))
                 order_id = None
                 if held > 0:
@@ -136,7 +182,10 @@ def execute(db, trades: list, due_exits: list | None = None, allow_entries: bool
                     if not res.broker_order_id:
                         raise LiveBrokerError(f"SELL rejected: {str(res.raw_response)[:200]}")
                     order_id = res.broker_order_id
-                _record(db, EV_EXIT, t, {"order_id": order_id, "qty": held})
+                exit_payload = {"order_id": order_id, "qty": held}
+                if held == 0 and never_filled:
+                    exit_payload["note"] = f"entry {never_filled} — nothing bought"
+                _record(db, EV_EXIT, t, exit_payload)
                 report.actions.append(f"LIVE SELL {t.symbol} x{held}" + (f" #{order_id}" if order_id else " (nothing held)"))
                 continue
 
