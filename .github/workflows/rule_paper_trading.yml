@@ -61,6 +61,16 @@ jobs:
           GARUD_KILL_SWITCH: ${{ vars.GARUD_KILL_SWITCH }}
           RUN_SOURCE: ${{ github.event.inputs.source || 'schedule' }}
         run: python backtest/run_options_paper.py
+      - name: Check token expiry
+        if: success() || failure()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          UPSTOX_SANDBOX_TOKEN: ${{ secrets.UPSTOX_SANDBOX_TOKEN }}
+          UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+          RUN_SOURCE: ${{ github.event.inputs.source || 'schedule' }}
+        run: python backtest/check_tokens.py
       - name: Alert on failure
         if: failure()
         env:
