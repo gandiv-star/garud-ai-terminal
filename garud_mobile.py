@@ -297,6 +297,24 @@ def trades_page(settings, key) -> None:
                        f'{_e(titles.get(t["rule"], t["rule"]))} · {t["entry_date"]:%d %b} → {t["exit_date"]:%d %b} · '
                        f'₹{t["entry"]:,.1f} → ₹{t["exit"]:,.1f}', _col(t["pnl"])) for t in closed[:30])
     card(f"બંધ trades ({len(closed)})", body or '<div class="g-s">હજી કોઈ trade બંધ થયો નથી</div>')
+    guard_card(trades)
+
+
+def guard_card(trades: list) -> None:
+    """What the live safety limits would have done if all paper trades had been real."""
+    from backtest import live_guard
+    cfg = live_guard.GuardConfig.from_env()
+    s = live_guard.simulate(trades, cfg)
+    reasons = ", ".join(f"{k}: {v}" for k, v in s["reasons"].items()) or "—"
+    body = (row("Trades (બધા tests)", f'{s["taken"]}/{s["trades"]} લેવાત',
+                f'{s["reduced"]} નાના કરાત · {s["skipped"]} અટકાવાત · કારણ: {_e(reasons)}')
+            + row("બંધ trades નું પરિણામ", _money(s["pnl_with_guard"]),
+                  f'મર્યાદા વગર {_money(s["pnl_without"])}', _col(s["pnl_with_guard"]))
+            + row("અત્યારે રોકાયેલી મૂડી", f'₹{s["open_value_now"]:,.0f}',
+                  f'મર્યાદા ₹{cfg.capital:,.0f} · વધુમાં વધુ {cfg.max_open} trades · એક stock ≤ {cfg.max_stock_pct:.0f}% · '
+                  f'મહિને નુકસાન ≤ ₹{cfg.monthly_loss_limit:,.0f}'
+                  + (f' · દિવસે ≤ ₹{cfg.daily_loss_limit:,.0f}' if cfg.daily_loss_limit > 0 else '')))
+    card("🛡 અસલ trading ની સુરક્ષા — જો આ trades અસલ હોત", body)
 
 
 def options_page(settings, key) -> None:
