@@ -4,19 +4,23 @@ streamlit_app.py calls nav() at the top; for every view except "tools" it calls 
 and stops, so the older analysis terminal stays available under 🛠 Tools unchanged.
 """
 import html
+import os
 from datetime import date, datetime, timedelta, timezone
 
 import streamlit as st
 
 IST = timezone(timedelta(hours=5, minutes=30))
-GOLD, GREEN, RED, MUTED = "#D4AF37", "#2ECC71", "#E5534B", "#9AA0AC"
+GOLD, GREEN, RED, MUTED = "#C9A227", "#22C55E", "#EF4444", "#94A3B8"
+AMBER, BLUE = "#F59E0B", "#4C8DFF"
+CARD, BORDER, LINE = "#12233D", "#1E3A5F", "#1A2F4D"
 
 VIEWS = {"🏠 આજ": "home", "📈 Trades": "trades", "🎯 Options": "options",
-         "🔬 સંશોધન": "research", "🛠 Tools": "tools"}
+         "🔬 સંશોધન": "research", "🩺 Health": "health", "🛠 Tools": "tools"}
+DOT = {"ok": GREEN, "warn": AMBER, "bad": RED, "na": MUTED}
 
 REGIME_GU = {
     "STRONG_BULL": ("મજબૂત તેજી", GREEN), "MODERATE_BULL": ("તેજી", GREEN),
-    "WEAK_BULL": ("હળવી તેજી", GREEN), "SIDEWAYS": ("Sideways", GOLD),
+    "WEAK_BULL": ("હળવી તેજી", GREEN), "SIDEWAYS": ("Sideways", AMBER),
     "WEAK_BEAR": ("નબળું / મંદી તરફ", RED), "MODERATE_BEAR": ("મંદી", RED), "STRONG_BEAR": ("ભારે મંદી", RED),
 }
 
@@ -27,16 +31,19 @@ BASE_CSS = f"""
 .g-top {{display:flex; justify-content:space-between; align-items:center; margin: 4px 2px 10px;}}
 .g-brand {{font-size: 1.45rem; font-weight: 800; color: {GOLD}; letter-spacing: .5px;}}
 .g-sub {{color: {MUTED}; font-size: .8rem;}}
-.g-badge {{border: 1px solid {GOLD}; color: {GOLD}; border-radius: 999px; padding: 2px 10px; font-size: .72rem; font-weight: 700;}}
-.g-card {{background: #161A23; border: 1px solid #262B38; border-radius: 16px; padding: 14px 16px; margin-bottom: 12px;}}
+.g-badge {{border: 1px solid {BLUE}; color: {BLUE}; border-radius: 999px; padding: 2px 10px; font-size: .72rem; font-weight: 700;}}
+.g-card {{background: {CARD}; border: 1px solid {BORDER}; border-radius: 16px; padding: 14px 16px; margin-bottom: 12px;}}
 .g-card h4 {{margin: 0 0 8px; font-size: .82rem; color: {MUTED}; font-weight: 600; text-transform: uppercase; letter-spacing: .6px;}}
 .g-big {{font-size: 1.7rem; font-weight: 800; line-height: 1.1;}}
-.g-row {{display:flex; justify-content:space-between; align-items:center; padding: 7px 0; border-bottom: 1px solid #222734;}}
+.g-row {{display:flex; justify-content:space-between; align-items:center; padding: 7px 0; border-bottom: 1px solid {LINE};}}
 .g-row:last-child {{border-bottom: none;}}
 .g-l {{font-weight: 600;}}
 .g-s {{color: {MUTED}; font-size: .78rem;}}
-.g-bar {{height: 6px; background: #262B38; border-radius: 999px; overflow: hidden; margin-top: 6px;}}
-.g-bar > div {{height: 100%; background: linear-gradient(90deg, {GOLD}, #F1D27A);}}
+.g-bar {{height: 6px; background: {LINE}; border-radius: 999px; overflow: hidden; margin-top: 6px;}}
+.g-bar > div {{height: 100%; background: {BLUE};}}
+.g-chips {{display:flex; flex-wrap:wrap; gap:6px; margin: 0 2px 10px;}}
+.g-chip {{border:1px solid {BORDER}; background:{CARD}; border-radius:999px; padding:2px 9px; font-size:.72rem; white-space:nowrap;}}
+.g-dot {{display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:5px; vertical-align:middle;}}
 .g-pill {{display:inline-block; border-radius: 999px; padding: 1px 9px; font-size: .72rem; font-weight: 700;}}
 .g-grid {{display:grid; grid-template-columns: 1fr 1fr; gap: 10px;}}
 div[data-testid="stSegmentedControl"] button, div[role="radiogroup"] label {{font-size: .85rem;}}
@@ -165,6 +172,39 @@ def unrealised(open_trades: list, prices: dict) -> float:
     return round(sum((prices[t["symbol"]] - t["entry"]) * t["qty"] for t in open_trades if t["symbol"] in prices), 2)
 
 
+@st.cache_data(ttl=120, show_spinner=False)
+def load_health(_settings, key: str) -> dict:
+    import garud_health as gh
+    now = datetime.now(IST)
+    res = gh.run_db_checks(lambda: _db(_settings), now)
+    try:
+        market, err = load_market(), ""
+    except Exception as e:
+        market, err = None, str(e)[:160]
+    mode = getattr(getattr(_settings, "trading_mode", None), "value", "")
+    checks = gh.all_checks(res, market, err, now, dict(os.environ), mode)
+    return {"checks": checks, "errors": gh.recent_errors(res["runs"]), "overall": gh.overall(checks),
+            "checked": now.strftime("%H:%M")}
+
+
+def _chip(label: str, status: str) -> str:
+    return f'<span class="g-chip"><span class="g-dot" style="background:{DOT.get(status, MUTED)}"></span>{_e(label)}</span>'
+
+
+def status_bar(settings) -> None:
+    """Always-visible status: mode, data, runs, broker, AI, risk — from real checks."""
+    try:
+        h = load_health(settings, datetime.now(IST).strftime("%Y%m%d%H%M")[:11])
+        by = {c.name: c for c in h["checks"]}
+        pick = [("Market data (NIFTY)", "Data"), ("Automatic runs", "Runs"), ("Broker sandbox (Upstox)", "Broker"),
+                ("AI (Gemini)", "AI"), ("Risk / kill switch", "Risk")]
+        chips = "".join(_chip(f"{short}: {by[n].value}", by[n].status) for n, short in pick if n in by)
+        st.markdown(f'<div class="g-chips">{chips}</div>', unsafe_allow_html=True)
+    except Exception as e:
+        st.markdown(f'<div class="g-chips">{_chip("Status unavailable: " + str(e)[:60], "bad")}</div>',
+                    unsafe_allow_html=True)
+
+
 # ------------------------------------------------------------------ navigation
 def nav(settings) -> str:
     """Brand header + screen picker. Returns the chosen view key."""
@@ -175,6 +215,7 @@ def nav(settings) -> str:
         f'<div class="g-top"><div><div class="g-brand">🦅 GARUD</div>'
         f'<div class="g-sub">{now:%d %b %Y, %H:%M} IST</div></div>'
         f'<span class="g-badge">{_e(mode)}</span></div>', unsafe_allow_html=True)
+    status_bar(settings)
     labels = list(VIEWS)
     picker = getattr(st, "segmented_control", None)
     if picker:
@@ -189,7 +230,8 @@ def nav(settings) -> str:
 
 def render(view: str, settings) -> None:
     key = datetime.now(IST).strftime("%Y%m%d%H%M")[:11]   # cache key changes every 10 minutes
-    pages = {"home": home, "trades": trades_page, "options": options_page, "research": research_page}
+    pages = {"home": home, "trades": trades_page, "options": options_page, "research": research_page,
+             "health": health_page}
     try:
         pages[view](settings, key)
     except Exception as e:
@@ -329,7 +371,7 @@ def options_page(settings, key) -> None:
             body += row(f'{"વેચ્યો" if leg["side"] < 0 else "ખરીદ્યો"} {leg["strike"]:.0f} {leg["type"]}',
                         f'₹{leg.get("entry", 0):,.2f}', "", RED if leg["side"] < 0 else GREEN)
         body += row("મળેલું premium", _money(e["credit"] * e["lot"]),
-                    f'નફો લેવાશે: બાકી ≤ {e["credit"] * op.TAKE_PROFIT:.1f} · stop: ≥ {e["credit"] * op.STOP_MULT:.1f} (દરેક unit)', GOLD)
+                    f'નફો લેવાશે: બાકી ≤ {e["credit"] * op.TAKE_PROFIT:.1f} · stop: ≥ {e["credit"] * op.STOP_MULT:.1f} (દરેક unit)', BLUE)
         card(f"ચાલુ condor {e['id']}", body)
     if not open_c:
         card("ચાલુ condor", '<div class="g-s">અત્યારે કોઈ condor ખુલ્લો નથી. બુધ–શુક્ર સવારે, આવતા અઠવાડિયાની '
@@ -344,6 +386,25 @@ def options_page(settings, key) -> None:
     for x in sorted(opt["exits"], key=lambda x: x["time"], reverse=True)[:20]:
         body += row(_e(x["id"]), _money(x["net_pnl"]), f'{_e(x["reason"])} · {x["time"][:10]}', _col(x["net_pnl"]))
     card("Options test — NIFTY iron condor", body)
+
+
+def health_page(settings, key) -> None:
+    import garud_health as gh
+    h = load_health(settings, key)
+    label = {"ok": "બધું બરાબર", "warn": "ધ્યાન આપવા જેવું", "bad": "તકલીફ છે"}[h["overall"]]
+    card("System health", f'<div class="g-big" style="color:{DOT[h["overall"]]}">{label}</div>'
+                          f'<div class="g-s">ચકાસ્યું {h["checked"]} IST · app version {gh.APP_VERSION}</div>')
+    body = "".join(row(f'<span class="g-dot" style="background:{DOT.get(c.status, MUTED)}"></span>{_e(c.name)}',
+                       _e(c.value), _e(c.detail)) for c in h["checks"])
+    card("ચકાસણીઓ", body)
+    errs = "".join(row(_e(e), "", f"{ts:%d %b %H:%M}") for ts, e in h["errors"])
+    card("તાજેતરની data issues (automatic runs)", errs or '<div class="g-s">કોઈ નથી</div>')
+    if st.button("🤖 AI ચકાસો (Gemini ને એક નાનો પ્રશ્ન)", use_container_width=True):
+        from llm.ai_reasoning import AIReasoningEngine
+        ans = AIReasoningEngine()._call_gemini("Reply with exactly: OK")
+        ok = ans.strip().upper().startswith("OK")
+        card("AI test", f'<div style="color:{GREEN if ok else RED};font-weight:700">'
+                        f'{"✅ AI જવાબ આપે છે" if ok else "❌ AI unavailable"}</div><div class="g-s">{_e(ans[:200])}</div>')
 
 
 RESEARCH = [
