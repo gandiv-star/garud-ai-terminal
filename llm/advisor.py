@@ -8,6 +8,7 @@ Rules (Master Command, Phase 5):
     output and timestamps; failures are shown as "AI unavailable" and never stored as advice.
 """
 import json
+import time
 from datetime import datetime, timezone
 
 PROMPT_VERSION = "advisor_v1"
@@ -57,14 +58,35 @@ def unavailable(text: str) -> bool:
     return (not text) or text.strip().startswith("(AI reasoning unavailable")
 
 
-def advise(facts: dict, call_fn, now: datetime | None = None) -> dict:
-    """call_fn(prompt) -> text. Returns the record (ok=False when the AI is unavailable)."""
+TRANSIENT = ("503", "429", "500", "502", "504", "overloaded", "unavailable", "timed out", "timeout")
+
+
+def friendly_error(text: str) -> str:
+    t = (text or "").lower()
+    if "503" in t or "overloaded" in t:
+        return "Gemini અત્યારે વ્યસ્ત છે (503) — થોડી મિનિટ પછી ફરી દબાવો"
+    if "429" in t or "quota" in t:
+        return "Gemini નો quota પૂરો થયો (429) — થોડી વાર પછી ફરી દબાવો"
+    if "key" in t and ("configured" in t or "invalid" in t or "401" in t or "403" in t):
+        return "Gemini key ની તકલીફ — Health tab માં ચકાસો"
+    return "Gemini જવાબ ન મળ્યો — થોડી વાર પછી ફરી દબાવો"
+
+
+def advise(facts: dict, call_fn, now: datetime | None = None, retries: int = 2, wait=time.sleep) -> dict:
+    """call_fn(prompt) -> text. Transient errors (503/429/timeouts) are retried with backoff.
+    Returns the record (ok=False when the AI is unavailable)."""
     now = now or datetime.now(timezone.utc)
     prompt = build_prompt(facts)
     text = call_fn(prompt)
+    for attempt in range(retries):
+        if not unavailable(text) or not any(k in text.lower() for k in TRANSIENT):
+            break
+        wait(2 * (attempt + 1))
+        text = call_fn(prompt)
     return {"ok": not unavailable(text), "symbol": facts.get("symbol"), "data_date": facts.get("data_date"),
             "model": model_name(), "prompt_version": PROMPT_VERSION, "input": facts, "output": text,
-            "created_at": now.isoformat(timespec="seconds")}
+            "created_at": now.isoformat(timespec="seconds"),
+            "error": friendly_error(text) if unavailable(text) else None}
 
 
 def cached(db, symbol: str, data_date: str) -> dict | None:
