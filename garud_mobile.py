@@ -688,7 +688,7 @@ def ai_block(settings, key, r: dict, snap: dict) -> None:
     if rec is None:
         return
     if not rec.get("ok", True):
-        st.warning("AI unavailable — નિયમ આધારિત માહિતી ઉપર છે. " + str(rec.get("output", ""))[:160])
+        st.warning("AI unavailable — " + str(rec.get("error") or "Gemini જવાબ ન મળ્યો") + ". નિયમ આધારિત માહિતી ઉપર છે.")
         return
     st.markdown(f'<div class="g-s">🤖 AI advisory · {_e(rec.get("model"))} · {_e(rec.get("prompt_version"))} · '
                 f'{_e(str(rec.get("created_at", ""))[:16].replace("T", " "))} · ડેટા {_e(rec.get("data_date"))}</div>',
