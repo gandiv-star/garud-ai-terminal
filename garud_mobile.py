@@ -626,6 +626,74 @@ def scanner_page(settings, key) -> None:
                 st.markdown(f'Reference ({f["rule"]}, છેલ્લા બંધ ₹{f["close"]} પર): stop ₹{f["stop"]} · qty {f["qty"]} · '
                             f'જોખમ ₹{f["risk"]}. અસલ entry આવતી સવારના open પર થશે.')
             st.caption(ACTION_GU.get(r["action"], ""))
+            if r["action"] in ("BUY CANDIDATE", "WATCH", "OPEN"):
+                ai_block(settings, key, r, snap)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_ai_advice(_settings, key: str) -> dict:
+    out = {}
+    for ev in _db(_settings).get_audit_events("AI_ADVICE", limit=300):
+        p = ev.payload or {}
+        out.setdefault((p.get("symbol"), p.get("data_date")), p)
+    return out
+
+
+def _ai_facts(settings, key, r: dict) -> dict:
+    import garud_risk as gk
+    from backtest import paper_rule
+    from llm import advisor
+    try:
+        mode = load_mode(settings, key)
+    except Exception:
+        mode = None
+    titles = {x.title: x.rule_id for x in paper_rule.RULES}
+    rule_title = (r.get("ref") or {}).get("rule") or next((c["rule"] for c in r.get("checks", [])
+                                                           if c.get("result") in ("signal", "open", "blocked by regime")), None)
+    rid = titles.get(rule_title)
+    try:
+        b = load_benchmarks(settings, key[:9]).get(rid) if rid else None
+    except Exception:
+        b = None
+    bench = {"trades": b.get("trades"), "pf": b.get("pf"), "avg_net_rs": b.get("mean"), "win_pct": b.get("win_rate"),
+             "period": b.get("period")} if b else None
+    trades = load_trades(settings, key)
+    closed = [t["pnl"] for t in trades if t["rule"] == rid and t["pnl"] is not None]
+    wins, losses = [x for x in closed if x > 0], [x for x in closed if x <= 0]
+    paper = {"rule": rule_title, "closed_trades": len(closed), "needed_for_verdict": 30, "net_rs": round(sum(closed), 2),
+             "pf": round(sum(wins) / abs(sum(losses)), 2) if losses and sum(losses) != 0 else None}
+    sec = gk.SECTOR.get(r["symbol"], "Other")
+    sec_open = sum(1 for t in trades if t["exit"] is None and gk.SECTOR.get(t["symbol"], "Other") == sec)
+    return advisor.build_facts(r, mode, bench, paper, sec, sec_open)
+
+
+def ai_block(settings, key, r: dict, snap: dict) -> None:
+    """Gemini explanation for one scanner row — advisory only, logged, never decides."""
+    from llm import advisor
+    k = (r["symbol"], r.get("date"))
+    try:
+        rec = load_ai_advice(settings, key).get(k)
+    except Exception:
+        rec = None
+    if rec is None and st.button("🤖 AI સમજૂતી (Gemini)", key=f"_g_ai_{r['symbol']}"):
+        with st.spinner("AI સમજૂતી તૈયાર થાય છે..."):
+            from llm.ai_reasoning import AIReasoningEngine
+            rec = advisor.advise(_ai_facts(settings, key, r), AIReasoningEngine()._call_gemini)
+            if rec["ok"]:
+                try:
+                    advisor.save(_db(settings), rec)
+                    load_ai_advice.clear()
+                except Exception as e:
+                    st.caption(f"AI જવાબ સાચવી ન શકાયો: {e}")
+    if rec is None:
+        return
+    if not rec.get("ok", True):
+        st.warning("AI unavailable — નિયમ આધારિત માહિતી ઉપર છે. " + str(rec.get("output", ""))[:160])
+        return
+    st.markdown(f'<div class="g-s">🤖 AI advisory · {_e(rec.get("model"))} · {_e(rec.get("prompt_version"))} · '
+                f'{_e(str(rec.get("created_at", ""))[:16].replace("T", " "))} · ડેટા {_e(rec.get("data_date"))}</div>',
+                unsafe_allow_html=True)
+    st.markdown(rec.get("output", ""))
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
