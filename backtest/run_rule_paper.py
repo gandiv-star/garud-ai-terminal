@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backtest import live_executor, paper_rule, rule_report, sandbox_mirror  # noqa: E402
+from backtest import live_executor, paper_rule, rule_report, sandbox_mirror, trading_mode  # noqa: E402
 from config.settings import load_settings  # noqa: E402
 from database.db import Database  # noqa: E402
 from database.models import AuditEvent  # noqa: E402
@@ -53,6 +53,25 @@ def _first_time_today(db, kind: str, now, body: str = "") -> bool:
     return True
 
 
+def today_mode(db, kill_switch: bool):
+    """Today's trading mode (backtest/trading_mode.py); stored once per day as TRADING_MODE."""
+    try:
+        now = paper_rule.now_ist()
+        nifty = paper_rule.MarketData(now).nifty_completed()
+        m = trading_mode.decide([c for _, c in nifty], nifty[-1][0] if nifty else None, paper_rule.RULES,
+                                kill_switch, now)
+        today = str(now.date())
+        last = db.get_audit_events("TRADING_MODE", limit=1)
+        p = (last[0].payload or {}) if last else {}
+        if p.get("day") != today or p.get("mode") != m["mode"]:
+            db.save_audit_event(AuditEvent(timestamp=datetime.now(timezone.utc), event_type="TRADING_MODE",
+                                           symbol=None, payload=json.loads(json.dumps({**m, "day": today}, default=str))))
+        return m
+    except Exception as e:
+        print(f"Trading mode unavailable: {e}")
+        return None
+
+
 def main() -> int:
     settings = load_settings()
     if settings.database_url.startswith("sqlite"):
@@ -69,6 +88,9 @@ def main() -> int:
     mirror = sandbox_mirror.mirror(db, trades, due_exits=report.due_time_exits, allow_entries=not kill_switch)
     live = live_executor.execute(db, trades, due_exits=report.due_time_exits, allow_entries=not kill_switch)
     lines = [f"🦅 Garud rule paper trading — {report.started}"]
+    mode = today_mode(db, kill_switch)
+    if mode:
+        lines.append(f"🧭 Mode {mode['mode']} (NIFTY {mode['regime']}, {mode['version']})")
     lines += [f"🟢 {e}" for e in report.entries] or []
     lines += [f"🔴 {x}" for x in report.exits] or []
     for rule in paper_rule.RULES:
