@@ -49,12 +49,18 @@ def longterm_rows(p: dict) -> list:
     return out
 
 
-def longterm_summary(p: dict, label: str) -> dict:
+BIASED = ("D", "E")   # momentum on TODAY's NIFTY 50 list (survivorship bias) — shown for comparison only
+
+
+def longterm_summary(p: dict, label: str, eligible: str) -> dict:
+    """eligible: strategy letters whose verdict counts under that study's pre-registration
+    (15-year check: F and G only; D/E use today's list and can never be candidates)."""
     rows = longterm_rows(p)
-    cands = [r[0] for r in rows if r[5]]
+    cands = [r[0] for r in rows if r[5] and (r[0] or "?")[0] in eligible and (r[0] or "?")[0] not in BIASED]
     return {"title": label, "pass": bool(cands),
             "verdict": ("Candidate: " + ", ".join(cands)) if cands else "કોઈ candidate નથી",
-            "lines": [(r[0], f'{r[1]}% (DD {r[2]}%) · પાછલો ભાગ {r[3]}%') for r in rows],
+            "lines": [(r[0] + (" — biased list, માત્ર સરખામણી" if (r[0] or "?")[0] in BIASED else ""),
+                       f'{r[1]}% (DD {r[2]}%) · પાછલો ભાગ {r[3]}%') for r in rows],
             "period": f'{p.get("start", "—")} → {p.get("end", "—")}'}
 
 
@@ -71,8 +77,8 @@ def intraday_summary(p: dict) -> dict:
 def study_cards(studies: dict) -> list:
     """[(kind, when or None, summary dict or None)] in a fixed order."""
     makers = {"EVIDENCE_MATRIX": evidence_summary,
-              "LONGTERM_COMPARISON": lambda p: longterm_summary(p, "લાંબા ગાળાની સરખામણી (5 વર્ષ)"),
-              "LONGTERM_15Y": lambda p: longterm_summary(p, "15 વર્ષ (સાચું NIFTY 50 લિસ્ટ)"),
+              "LONGTERM_COMPARISON": lambda p: longterm_summary(p, "લાંબા ગાળાની સરખામણી (5 વર્ષ)", "CFG"),
+              "LONGTERM_15Y": lambda p: longterm_summary(p, "15 વર્ષ (સાચું NIFTY 50 લિસ્ટ)", "FG"),
               "INTRADAY_TEST": intraday_summary}
     out = []
     for kind in STUDIES:
