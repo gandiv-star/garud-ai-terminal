@@ -14,7 +14,7 @@ GOLD, GREEN, RED, MUTED = "#C9A227", "#22C55E", "#EF4444", "#94A3B8"
 AMBER, BLUE = "#F59E0B", "#4C8DFF"
 CARD, BORDER, LINE = "#12233D", "#1E3A5F", "#1A2F4D"
 
-VIEWS = {"🏠 આજ": "home", "📈 Trades": "trades", "🎯 Options": "options",
+VIEWS = {"🏠 આજ": "home", "🧭 Mode": "mode", "📈 Trades": "trades", "🎯 Options": "options",
          "🔬 સંશોધન": "research", "🩺 Health": "health", "🛠 Tools": "tools"}
 DOT = {"ok": GREEN, "warn": AMBER, "bad": RED, "na": MUTED}
 
@@ -108,6 +108,26 @@ def load_market() -> dict:
            "chg": (closes[-1] / closes[-2] - 1) * 100 if len(closes) > 1 else None}
     out["regime"] = _regime_at(closes).regime.value if len(closes) > 1 else None
     return out
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_mode(_settings, key: str) -> dict:
+    """Today's mode computed live from completed NIFTY closes (same engine as the pipeline)."""
+    from backtest import paper_rule, trading_mode
+    now = paper_rule.now_ist()
+    nifty = paper_rule.MarketData(now).nifty_completed()
+    kill = False
+    try:
+        runs = _db(_settings).get_audit_events("PIPELINE_RUN", limit=1)
+        kill = bool(runs and (runs[0].payload or {}).get("kill_switch"))
+    except Exception:
+        pass
+    return trading_mode.decide([c for _, c in nifty], nifty[-1][0] if nifty else None, paper_rule.RULES, kill, now)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_mode_history(_settings, key: str) -> list:
+    return [(e.timestamp, e.payload or {}) for e in _db(_settings).get_audit_events("TRADING_MODE", limit=15)]
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -230,7 +250,7 @@ def nav(settings) -> str:
 
 def render(view: str, settings) -> None:
     key = datetime.now(IST).strftime("%Y%m%d%H%M")[:11]   # cache key changes every 10 minutes
-    pages = {"home": home, "trades": trades_page, "options": options_page, "research": research_page,
+    pages = {"home": home, "mode": mode_page, "trades": trades_page, "options": options_page, "research": research_page,
              "health": health_page}
     try:
         pages[view](settings, key)
@@ -258,7 +278,19 @@ def market_card() -> None:
     card("બજાર", body)
 
 
+def mode_color(mode: str) -> str:
+    return RED if mode == "NO TRADE" else AMBER if mode == "DEFENSIVE" else BLUE
+
+
 def home(settings, key) -> None:
+    try:
+        m = load_mode(settings, key)
+        card("🧭 આજનો Trading Mode",
+             f'<div class="g-big" style="color:{mode_color(m["mode"])};font-size:1.25rem">{_e(m["mode"])}</div>'
+             f'<div class="g-s">{_e(m["reason"])}</div>'
+             f'<div class="g-s" style="margin-top:4px">વિગત માટે 🧭 Mode tab · {_e(m["version"])}</div>')
+    except Exception as e:
+        card("🧭 આજનો Trading Mode", f'<div class="g-s">Unavailable: {_e(e)}</div>')
     market_card()
     trades = load_trades(settings, key)
     rules = _rules()
@@ -386,6 +418,47 @@ def options_page(settings, key) -> None:
     for x in sorted(opt["exits"], key=lambda x: x["time"], reverse=True)[:20]:
         body += row(_e(x["id"]), _money(x["net_pnl"]), f'{_e(x["reason"])} · {x["time"][:10]}', _col(x["net_pnl"]))
     card("Options test — NIFTY iron condor", body)
+
+
+def mode_page(settings, key) -> None:
+    m = load_mode(settings, key)
+    ctx = m.get("context") or {}
+    reg, rcol = REGIME_GU.get(m.get("regime"), (m.get("regime") or "—", MUTED))
+    card("આજનો Trading Mode",
+         f'<div class="g-big" style="color:{mode_color(m["mode"])}">{_e(m["mode"])}</div>'
+         f'<div style="margin:6px 0">{_e(m["reason"])}</div>'
+         f'<div class="g-s">Regime: <span class="g-pill" style="background:{rcol}22;color:{rcol}">{_e(reg)}</span> · '
+         f'ડેટા {_e(m.get("data_date"))} સુધીનો · નિર્ણય {_e(m.get("decided_at", "")[:16].replace("T", " "))} · '
+         f'{_e(m["version"])}</div>')
+    body = "".join(row(f"✅ {_e(t)}", "સક્રિય", _e(s_)) for t, s_ in m.get("active", []))
+    body += "".join(row(f"⛔ {_e(t)}", "બંધ", _e(why), MUTED) for t, why in m.get("rejected", []))
+    body += row("🎯 Options condor v1", "સ્વતંત્ર", "regime પર આધાર નથી · બુધ–શુક્ર સવારે entry window")
+    card("કયા rules આજે નવા trades લઈ શકે", body)
+    def pct(v):
+        return "—" if v is None else f"{v:+.1f}%"
+    ev = (row("NIFTY છેલ્લો બંધ", f'{ctx["price"]:,.0f}' if ctx.get("price") else "—")
+          + row("SMA50 થી અંતર", pct(ctx.get("vs_sma50_pct")))
+          + row("SMA200 થી અંતર", pct(ctx.get("vs_sma200_pct")))
+          + row("20 દિવસનું વળતર", pct(ctx.get("ret20_pct")))
+          + row("20 દિવસની volatility", f'{ctx["vol20_pct"]:.1f}%' if ctx.get("vol20_pct") else "—",
+                f'છેલ્લા 1 વર્ષમાં {ctx.get("vol_percentile")}મા percentile પર' if ctx.get("vol_percentile") is not None else "")
+          + row("Risk level (માત્ર માહિતી)", _e(ctx.get("risk_level") or "—"), "",
+                RED if ctx.get("risk_level") == "HIGH" else GREEN if ctx.get("risk_level") == "LOW" else None))
+    card("પુરાવા / indicators", ev)
+    conds = "".join(row(f'{"✅" if ok else "❌"} {_e(n)}', _e(v)) for n, ok, v in m.get("next_regime", []))
+    card("Mode ક્યારે બદલાશે", (conds + '<div class="g-s" style="margin-top:6px">ત્રણેય ✅ થાય તો regime '
+                               'MODERATE_BULL બને: ત્યારે Trend Following (v3) ચાલુ થાય અને v1/v2 નવા trades બંધ કરે.</div>')
+         if conds else '<div class="g-s">માહિતી નથી</div>')
+    card("પ્રામાણિક નોંધ", '<div class="g-s">આ mode કોઈ આગાહી નથી. 8 ઓક્ટો 2026 ના evidence matrix માં '
+                          '"regime પ્રમાણે strategy બદલવાથી ફાયદો" સાબિત થયો નથી. Mode માત્ર બતાવે છે કે પહેલેથી '
+                          'નક્કી કરેલા કયા paper rules આજે trade લેવા લાયક છે. પાસ/નાપાસ 30 trades પછી જ.</div>')
+    try:
+        hist = load_mode_history(settings, key[:10])
+        body = "".join(row(_e(p.get("mode")), _e(p.get("regime")), f'{_e(p.get("day"))} · {_e(p.get("version"))}')
+                       for _, p in hist)
+        card("Mode નો ઇતિહાસ (રોજ automatic run નોંધે છે)", body or '<div class="g-s">હજી નોંધ નથી — આગલા run થી શરૂ થશે</div>')
+    except Exception as e:
+        card("Mode નો ઇતિહાસ", f'<div class="g-s">Unavailable: {_e(e)}</div>')
 
 
 def health_page(settings, key) -> None:
