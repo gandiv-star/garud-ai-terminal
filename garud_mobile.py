@@ -14,7 +14,8 @@ GOLD, GREEN, RED, MUTED = "#C9A227", "#22C55E", "#EF4444", "#94A3B8"
 AMBER, BLUE = "#F59E0B", "#4C8DFF"
 CARD, BORDER, LINE = "#12233D", "#1E3A5F", "#1A2F4D"
 
-VIEWS = {"🏠 આજ": "home", "🧭 Mode": "mode", "📈 Trades": "trades", "🎯 Options": "options",
+VIEWS = {"🏠 આજ": "home", "🧭 Mode": "mode", "🔎 Scanner": "scanner", "📊 Chart": "chart",
+         "📈 Trades": "trades", "🎯 Options": "options",
          "🔬 સંશોધન": "research", "🩺 Health": "health", "🛠 Tools": "tools"}
 DOT = {"ok": GREEN, "warn": AMBER, "bad": RED, "na": MUTED}
 
@@ -250,7 +251,8 @@ def nav(settings) -> str:
 
 def render(view: str, settings) -> None:
     key = datetime.now(IST).strftime("%Y%m%d%H%M")[:11]   # cache key changes every 10 minutes
-    pages = {"home": home, "mode": mode_page, "trades": trades_page, "options": options_page, "research": research_page,
+    pages = {"home": home, "mode": mode_page, "scanner": scanner_page, "chart": chart_page,
+             "trades": trades_page, "options": options_page, "research": research_page,
              "health": health_page}
     try:
         pages[view](settings, key)
@@ -459,6 +461,118 @@ def mode_page(settings, key) -> None:
         card("Mode નો ઇતિહાસ (રોજ automatic run નોંધે છે)", body or '<div class="g-s">હજી નોંધ નથી — આગલા run થી શરૂ થશે</div>')
     except Exception as e:
         card("Mode નો ઇતિહાસ", f'<div class="g-s">Unavailable: {_e(e)}</div>')
+
+
+ACTION_COL = {"BUY CANDIDATE": GREEN, "OPEN": BLUE, "WATCH": AMBER, "NO TRADE": MUTED, "DATA ISSUE": RED}
+ACTION_GU = {"BUY CANDIDATE": "BUY CANDIDATE — આવતી સવારે paper entry", "OPEN": "હાલ ખુલ્લો",
+             "WATCH": "WATCH — signal છે પણ regime રોકે છે", "NO TRADE": "NO TRADE", "DATA ISSUE": "DATA ISSUE"}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_scan(_settings, key: str):
+    ev = _db(_settings).get_audit_events("SCAN_SNAPSHOT", limit=1)
+    return (ev[0].payload or {}) if ev else None
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def live_scan(_settings, key: str) -> dict:
+    from backtest import paper_rule, scanner
+    from strategies.registry import STRATEGY_REGISTRY
+    trades = [t for t in _db(_settings).get_trades(limit=5000) if t.strategy_name in paper_rule.RULE_IDS]
+    snap = scanner.build_snapshot(paper_rule.MarketData(paper_rule.now_ist()), STRATEGY_REGISTRY, trades)
+    snap["built_at"] = datetime.now(IST).isoformat(timespec="minutes") + " (live)"
+    return snap
+
+
+def scanner_page(settings, key) -> None:
+    snap = st.session_state.get("_g_live_scan") or load_scan(settings, key)
+    if st.button("🔄 હમણાં નવો scan (આશરે 1 મિનિટ)", use_container_width=True):
+        with st.spinner("NIFTY 50 ના બધા stocks ચકાસું છું..."):
+            snap = live_scan(settings, key[:10])
+            st.session_state["_g_live_scan"] = snap
+    if not snap:
+        card("Scanner", '<div class="g-s">હજી snapshot નથી — સાંજના automatic run પછી આવશે, અથવા ઉપરનું બટન દબાવો.</div>')
+        return
+    c = snap.get("counts", {})
+    card("Smart Scanner — NIFTY 50 (daily, rule-based)",
+         row("ડેટા", _e(snap.get("data_date")), f'regime {_e(snap.get("regime"))} · બન્યો {_e(snap.get("built_at", "")).replace("T", " ")} · {_e(snap.get("version"))}')
+         + "".join(row(f'<span class="g-dot" style="background:{ACTION_COL[k]}"></span>{_e(k)}', str(c.get(k, 0)))
+                   for k in ACTION_COL)
+         + '<div class="g-s" style="margin-top:6px">કોઈ બનાવટી score નથી: rules હા/ના છે, દરેક stock નું કારણ નીચે છે. '
+           'Labels કોઈ order નથી — paper entry pipeline જ કરે છે.</div>')
+    choice = st.radio("filter", ["બધા", "BUY CANDIDATE", "OPEN", "WATCH", "NO TRADE", "DATA ISSUE"],
+                      horizontal=True, label_visibility="collapsed", key="_g_scan_f")
+    rows = [r for r in snap.get("rows", []) if choice == "બધા" or r["action"] == choice]
+    for r in rows[:60]:
+        col = ACTION_COL.get(r["action"], MUTED)
+        st.markdown(
+            f'<div class="g-card" style="padding:10px 14px;margin-bottom:6px">'
+            f'<div style="display:flex;justify-content:space-between"><b>{_e(r["symbol"])}</b>'
+            f'<span class="g-pill" style="background:{col}22;color:{col}">{_e(r["action"])}</span></div>'
+            f'<div class="g-s">₹{r["close"] if r["close"] is not None else "—"} · {_e(r["date"])} · '
+            f'SMA20 થી {r["trend_pct"] if r["trend_pct"] is not None else "—"}% · 10d {r["mom10_pct"] if r["mom10_pct"] is not None else "—"}% · '
+            f'ATR {r["atr_pct"] if r["atr_pct"] is not None else "—"}%</div>'
+            f'<div style="font-size:.85rem;margin-top:3px">{_e(r["reason"])}</div></div>', unsafe_allow_html=True)
+        with st.expander(f'{r["symbol"]} — વિગત'):
+            for ch in r.get("checks", []):
+                st.markdown(f'- **{ch["rule"]}**: {ch["result"]}' + (f' — {ch.get("why")}' if ch.get("why") else ""))
+            if r.get("ref"):
+                f = r["ref"]
+                st.markdown(f'Reference ({f["rule"]}, છેલ્લા બંધ ₹{f["close"]} પર): stop ₹{f["stop"]} · qty {f["qty"]} · '
+                            f'જોખમ ₹{f["risk"]}. અસલ entry આવતી સવારના open પર થશે.')
+            st.caption(ACTION_GU.get(r["action"], ""))
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_bars(symbol: str, key: str) -> list:
+    from data.yfinance_loader import YFinanceLoader
+    end = datetime.now(IST).replace(tzinfo=None) + timedelta(days=1)
+    return YFinanceLoader().get_historical_bars(symbol, end - timedelta(days=700), end)
+
+
+def chart_page(settings, key) -> None:
+    import garud_chart as gc
+    from backtest import paper_rule
+    trades = load_trades(settings, key)
+    open_syms = sorted({t["symbol"] for t in trades if t["exit"] is None})
+    snap = load_scan(settings, key) or {}
+    cands = [r["symbol"] for r in snap.get("rows", []) if r["action"] == "BUY CANDIDATE"]
+    universe = sorted(set(paper_rule.UNIVERSE_NIFTY50) | set(paper_rule.UNIVERSE_8))
+    first = (cands + open_syms + universe)[0]
+    sym = st.selectbox("Stock", universe, index=universe.index(first), key="_g_chart_sym")
+    span = st.radio("Range", ["3M", "6M", "1Y"], index=1, horizontal=True, key="_g_chart_rng")
+    try:
+        bars = load_bars(sym, key[:10])
+    except Exception as e:
+        card("Chart", f'<div class="g-s">ડેટા મળ્યો નહીં: {_e(e)}</div>')
+        return
+    if len(bars) < 30:
+        card("Chart", '<div class="g-s">પૂરતો ડેટા નથી</div>')
+        return
+    s = gc.series(bars)
+    days = {"3M": 92, "6M": 183, "1Y": 366}[span]
+    start = gc.start_index(s["dates"], (datetime.now(IST) - timedelta(days=days)).date())
+    mine = [t for t in trades if t["symbol"] == sym]
+    markers = [(t["entry_date"], t["entry"], "entry", f'Paper BUY ₹{t["entry"]}') for t in mine if t["entry_date"]]
+    markers += [(t["exit_date"], t["exit"], "exit", f'Paper exit ₹{t["exit"]} ({_money(t["pnl"])})')
+                for t in mine if t["exit_date"] and t["exit"] is not None]
+    levels = []
+    for t in mine:
+        if t["exit"] is None:
+            levels += [(t["entry"], f'Entry ₹{t["entry"]:,.1f}', BLUE), (t["stop"], f'Stop ₹{t["stop"]:,.1f}', RED)]
+    last = bars[-1]
+    try:
+        fig = gc.build_figure(s, start, markers, levels, f"{sym} · daily · છેલ્લો ₹{last.close:,.1f}")
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    except Exception as e:
+        st.warning(f"Advanced chart unavailable ({e}) — simple chart:")
+        st.line_chart({"close": s["close"][start:]})
+    r_ = s["rsi"][-1]
+    card("આ chart માં શું છે",
+         row("છેલ્લો bar", f"{last.timestamp:%d %b %Y}", "માત્ર daily bars — intraday ડેટા નથી")
+         + row("RSI14", f"{r_:.0f}" if r_ is not None else "—", "70 ઉપર ઊંચું, 30 નીચે નીચું (માત્ર માહિતી)")
+         + row("▲ / ▼ markers", str(len(markers)), "Garud ના અસલ paper trades (ઇતિહાસ) — કોઈ આગાહી નહીં")
+         + row("ડૅશ લાઇન", str(len(levels) // 2), "હાલ ખુલ્લા trade ની entry અને stop"))
 
 
 def health_page(settings, key) -> None:
