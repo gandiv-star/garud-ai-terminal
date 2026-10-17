@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backtest import live_executor, paper_rule, rule_report, sandbox_mirror, trading_mode  # noqa: E402
+from backtest import live_executor, paper_rule, rule_report, sandbox_mirror, scanner, trading_mode  # noqa: E402
 from config.settings import load_settings  # noqa: E402
 from database.db import Database  # noqa: E402
 from database.models import AuditEvent  # noqa: E402
@@ -72,6 +72,26 @@ def today_mode(db, kill_switch: bool):
         return None
 
 
+def daily_scan(db, trades: list, now, manual: bool):
+    """Evening (or manual) scanner snapshot, stored once per day as SCAN_SNAPSHOT."""
+    if not (manual or now.time() >= paper_rule.MARKET_CLOSE_IST):
+        return None
+    try:
+        last = db.get_audit_events("SCAN_SNAPSHOT", limit=1)
+        if last and (last[0].payload or {}).get("day") == str(now.date()) and not manual:
+            return None
+        rule_trades = [t for t in trades if t.strategy_name in paper_rule.RULE_IDS]
+        snap = scanner.build_snapshot(paper_rule.MarketData(now), STRATEGY_REGISTRY, rule_trades)
+        snap["day"] = str(now.date())
+        snap["built_at"] = now.isoformat(timespec="minutes")
+        db.save_audit_event(AuditEvent(timestamp=datetime.now(timezone.utc), event_type="SCAN_SNAPSHOT",
+                                       symbol=None, payload=json.loads(json.dumps(snap, default=str))))
+        return snap
+    except Exception as e:
+        print(f"Scanner snapshot failed: {e}")
+        return None
+
+
 def main() -> int:
     settings = load_settings()
     if settings.database_url.startswith("sqlite"):
@@ -111,6 +131,12 @@ def main() -> int:
     if mirror.unreconciled:
         lines.append(f"🧪⚠️ {len(mirror.unreconciled)} unreconciled: " + "; ".join(mirror.unreconciled[:5]))
 
+    now_ist = paper_rule.now_ist()
+    snap = daily_scan(db, trades, now_ist, os.getenv("RUN_SOURCE", "").strip().lower() == "manual")
+    if snap:
+        cands = [r["symbol"] for r in snap["rows"] if r["action"] == "BUY CANDIDATE"]
+        lines.append(f"🔎 Scanner ({snap['data_date']}): " + (", ".join(cands) + " — paper entry at next open"
+                                                            if cands else "no new candidates"))
     text = "\n".join(lines)
     print(text)
     # Heartbeat for the app's System Health screen (never contains secrets).
