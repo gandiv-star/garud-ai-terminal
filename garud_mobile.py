@@ -667,6 +667,17 @@ def _ai_facts(settings, key, r: dict) -> dict:
     return advisor.build_facts(r, mode, bench, paper, sec, sec_open)
 
 
+def _ist_text(iso) -> str:
+    """Stored UTC ISO time -> 'YYYY-MM-DD HH:MM' in IST."""
+    try:
+        t = datetime.fromisoformat(str(iso))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        return t.astimezone(IST).strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return str(iso or "")[:16]
+
+
 def ai_block(settings, key, r: dict, snap: dict) -> None:
     """Gemini explanation for one scanner row — advisory only, logged, never decides."""
     from llm import advisor
@@ -691,7 +702,7 @@ def ai_block(settings, key, r: dict, snap: dict) -> None:
         st.warning("AI unavailable — " + str(rec.get("error") or "Gemini જવાબ ન મળ્યો") + ". નિયમ આધારિત માહિતી ઉપર છે.")
         return
     st.markdown(f'<div class="g-s">🤖 AI advisory · {_e(rec.get("model"))} · {_e(rec.get("prompt_version"))} · '
-                f'{_e(str(rec.get("created_at", ""))[:16].replace("T", " "))} · ડેટા {_e(rec.get("data_date"))}</div>',
+                f'{_e(_ist_text(rec.get("created_at")))} IST · ડેટા {_e(rec.get("data_date"))}</div>',
                 unsafe_allow_html=True)
     st.markdown(rec.get("output", ""))
 
