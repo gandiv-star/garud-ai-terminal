@@ -1,0 +1,128 @@
+"""Research Lab data for the Garud app — every number comes from a stored test result in the
+database (never typed in). A test that was never run is shown as NOT RUN / NOT TESTED."""
+from datetime import timedelta, timezone
+
+IST = timezone(timedelta(hours=5, minutes=30))
+STUDIES = ("EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
+SAME_ASSUMPTIONS = ("Same engine for every strategy: entry at the next day's open, stop 2×ATR, "
+                    "1% risk of ₹1,00,000 per trade, real delivery charges (STT, exchange, stamp, GST); "
+                    "intraday and options tests use their own real cost models.")
+
+
+def _when(ev):
+    ts = ev.timestamp
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(IST)
+
+
+def latest_studies(db) -> dict:
+    out = {}
+    for kind in STUDIES:
+        evs = db.get_audit_events(kind, limit=1)
+        out[kind] = (_when(evs[0]), evs[0].payload or {}) if evs else None
+    return out
+
+
+# ------------------------------------------------------------------ per-study summaries
+def evidence_summary(p: dict) -> dict:
+    sel, base = p.get("selection_test") or {}, p.get("baseline_test") or {}
+    ok = bool(p.get("mode_has_evidence"))
+    return {"title": "Regime પ્રમાણે strategy પસંદગી (Evidence matrix)", "pass": ok,
+            "verdict": "પુરાવો મળ્યો" if ok else "પુરાવો નથી",
+            "lines": [("Train / test trades", f'{p.get("train_trades", "—")} / {p.get("test_trades", "—")}'),
+                      ("Favoured → confirmed cells", f'{p.get("favoured_cells", "—")} → {p.get("confirmed_cells", "—")}'),
+                      ("Test PF: પસંદગી vs બધા", f'{sel.get("pf", "—")} vs {base.get("pf", "—")}'),
+                      ("Test avg/trade: પસંદગી vs બધા", f'₹{sel.get("avg", "—")} vs ₹{base.get("avg", "—")}'),
+                      ("Out-of-sample split", str(p.get("split_date", "—")))]}
+
+
+def longterm_rows(p: dict) -> list:
+    """[(strategy, full cagr, full maxdd, test/last cagr, trades, candidate or None)]"""
+    verd = p.get("verdicts") or {}
+    out = []
+    for r in p.get("rows") or []:
+        f, t = r.get("full") or {}, r.get("test") or {}
+        k = (r.get("strategy") or "?")[0]
+        cand = (verd.get(k) or {}).get("candidate") if verd else r.get("candidate")
+        out.append((r.get("strategy"), f.get("cagr"), f.get("max_dd"), t.get("cagr"), r.get("trades"), cand))
+    return out
+
+
+def longterm_summary(p: dict, label: str) -> dict:
+    rows = longterm_rows(p)
+    cands = [r[0] for r in rows if r[5]]
+    return {"title": label, "pass": bool(cands),
+            "verdict": ("Candidate: " + ", ".join(cands)) if cands else "કોઈ candidate નથી",
+            "lines": [(r[0], f'{r[1]}% (DD {r[2]}%) · પાછલો ભાગ {r[3]}%') for r in rows],
+            "period": f'{p.get("start", "—")} → {p.get("end", "—")}'}
+
+
+def intraday_summary(p: dict) -> dict:
+    st = p.get("strategies") or {}
+    passed = [k for k, v in st.items() if v.get("pass")]
+    return {"title": "Intraday (NIFTY 50, 60-min, 2 વર્ષ)", "pass": bool(passed),
+            "verdict": ("PASS: " + ", ".join(passed)) if passed else "કોઈ પાસ નથી",
+            "lines": [(k, f'PF {v.get("all", {}).get("pf", "—")} · avg ₹{v.get("all", {}).get("avg", "—")} '
+                          f'(ખર્ચ પહેલાં ₹{v.get("all", {}).get("gross_avg", "—")})') for k, v in st.items()],
+            "period": f'{p.get("first_date", "—")} → {p.get("last_date", "—")}'}
+
+
+def study_cards(studies: dict) -> list:
+    """[(kind, when or None, summary dict or None)] in a fixed order."""
+    makers = {"EVIDENCE_MATRIX": evidence_summary,
+              "LONGTERM_COMPARISON": lambda p: longterm_summary(p, "લાંબા ગાળાની સરખામણી (5 વર્ષ)"),
+              "LONGTERM_15Y": lambda p: longterm_summary(p, "15 વર્ષ (સાચું NIFTY 50 લિસ્ટ)"),
+              "INTRADAY_TEST": intraday_summary}
+    out = []
+    for kind in STUDIES:
+        item = studies.get(kind)
+        if not item:
+            out.append((kind, None, None))
+            continue
+        when, payload = item
+        try:
+            out.append((kind, when, makers[kind](payload)))
+        except Exception as e:
+            out.append((kind, when, {"title": kind, "pass": False, "verdict": f"read error: {e}", "lines": []}))
+    return out
+
+
+# ------------------------------------------------------------------ rules: backtest vs paper
+def rule_rows(rules, trades: list, benches: dict, checkpoint_status) -> list:
+    """trades: dicts with rule, exit, pnl, exit_date (garud_mobile.load_trades rows)."""
+    out = []
+    for r in rules:
+        closed = sorted([t for t in trades if t["rule"] == r.rule_id and t["exit"] is not None and t["pnl"] is not None],
+                        key=lambda t: t["exit_date"])
+        pnls = [t["pnl"] for t in closed]
+        wins, losses = [p for p in pnls if p > 0], [p for p in pnls if p <= 0]
+        b = benches.get(r.rule_id) or {}
+        try:
+            status = checkpoint_status(pnls, b or None)
+        except Exception:
+            status = "—"
+        out.append({
+            "title": r.title, "strategy": r.strategy_name, "describe": r.describe(),
+            "bench": ({"trades": b.get("trades"), "avg": b.get("mean"), "win": b.get("win_rate"), "pf": b.get("pf"),
+                       "period": b.get("period")} if b else None),
+            "paper": {"closed": len(pnls), "target": r.target_trades, "net": round(sum(pnls), 2),
+                      "avg": round(sum(pnls) / len(pnls), 2) if pnls else None,
+                      "win": round(len(wins) / len(pnls) * 100, 1) if pnls else None,
+                      "pf": round(sum(wins) / abs(sum(losses)), 2) if losses and sum(losses) != 0 else None},
+            "status": status,
+        })
+    return out
+
+
+def registry_rows(registry: dict, rules, strategy_regimes) -> list:
+    used = {}
+    for r in rules:
+        used.setdefault(r.strategy_name, []).append(r.title)
+    out = []
+    for name in registry:
+        regs = strategy_regimes(name)
+        out.append({"name": name, "rules": used.get(name, []),
+                    "status": "Paper test ચાલુ" if name in used else "માત્ર research",
+                    "regimes": "બધા" if len(regs) >= 7 else ", ".join(sorted(regs))})
+    return out

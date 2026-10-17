@@ -601,18 +601,67 @@ def health_page(settings, key) -> None:
                         f'{"✅ AI જવાબ આપે છે" if ok else "❌ AI unavailable"}</div><div class="g-s">{_e(ans[:200])}</div>')
 
 
-RESEARCH = [
-    ("Regime પ્રમાણે strategy બદલવી", "❌", "20,000 trades: નવા ડેટામાં પસંદગી PF 0.75 vs બધું 0.73 — ફાયદો નથી"),
-    ("Swing strategies (10/40 દિવસ)", "⏳", "Backtest માં કોઈ સ્પષ્ટ પાસ નહીં; v1, v2, v3 paper માં ચકાસાય છે"),
-    ("Momentum (સાચું NIFTY 50 લિસ્ટ, 15 વર્ષ)", "❌", "12.3% vs NIFTY 11.7% — 2011-21 માં index થી પાછળ"),
-    ("NIFTY index ખરીદો અને રાખો (15 વર્ષ)", "✅", "11.7% વાર્ષિક vs FD 7% — પણ વચ્ચે ખરાબ વર્ષો"),
-    ("Intraday (ORB, Gap) — 2 વર્ષ", "❌", "ખર્ચ પહેલાં ₹24–44 નફો, ખર્ચ ₹180 — નુકસાન"),
-    ("NIFTY options વેચવા (iron condor)", "⏳", "21 ઓક્ટો 2026 થી paper માં, 30 trades પછી નિર્ણય"),
-]
+@st.cache_data(ttl=900, show_spinner=False)
+def load_studies(_settings, key: str) -> dict:
+    import garud_research as gr
+    return gr.latest_studies(_db(_settings))
 
 
 def research_page(settings, key) -> None:
-    body = "".join(row(f"{icon} {_e(t)}", "", _e(d)) for t, icon, d in RESEARCH)
-    card("શું ચકાસ્યું અને શું મળ્યું", body)
+    import garud_research as gr
+    from backtest import paper_rule, rule_report, trading_mode
+    from strategies.registry import STRATEGY_REGISTRY
+    card("Research Lab", f'<div class="g-s">{_e(gr.SAME_ASSUMPTIONS)} Backtest ના આંકડા ભૂતકાળના છે — '
+                         'અસલ ભવિષ્યનું પરિણામ નથી. નિર્ણય ફક્ત paper (forward) test પરથી.</div>')
+    # --- rules: backtest benchmark vs paper
+    trades = load_trades(settings, key)
+    try:
+        benches = load_benchmarks(settings, key[:9])
+    except Exception:
+        benches = {}
+    for r in gr.rule_rows(paper_rule.RULES, trades, benches, rule_report.checkpoint_status):
+        b, pp = r["bench"], r["paper"]
+        body = row("Backtest (5 વર્ષ)", f'PF {b["pf"]}' if b else "NOT RUN",
+                   f'{b["trades"]} trades · avg ₹{b["avg"]} · win {b["win"]}% · {_e(b["period"])}' if b else "benchmark DB માં નથી")
+        body += row("Paper (forward, out-of-sample)", f'{pp["closed"]}/{pp["target"]}',
+                    f'net {_money(pp["net"])} · avg {_money(pp["avg"]) if pp["avg"] is not None else "—"} · '
+                    f'win {pp["win"] if pp["win"] is not None else "—"}% · PF {pp["pf"] if pp["pf"] is not None else "—"}',
+                    _col(pp["net"])) + bar(pp["closed"] / pp["target"])
+        body += row("Walk-forward / robustness", "NOT TESTED", "આ rule માટે ચલાવ્યું નથી (સાધન 🛠 Tools → Backtest માં છે)", MUTED)
+        body += row("Status", "", _e(r["status"]))
+        card(f'{r["title"]} · {r["strategy"]}', body + f'<div class="g-s" style="margin-top:6px">{_e(r["describe"])}</div>')
+    # --- completed studies
+    try:
+        studies = load_studies(settings, key[:9])
+    except Exception as e:
+        studies = {}
+        card("Studies", f'<div class="g-s">Unavailable: {_e(e)}</div>')
+    for kind, when, sm in gr.study_cards(studies):
+        if sm is None:
+            card(kind, '<div class="g-s">NOT RUN — DB માં પરિણામ નથી</div>')
+            continue
+        col = GREEN if sm["pass"] else RED
+        body = (f'<div style="color:{col};font-weight:800">{"✅" if sm["pass"] else "❌"} {_e(sm["verdict"])}</div>'
+                f'<div class="g-s">ચલાવ્યું {when:%d %b %Y}' + (f' · {_e(sm.get("period"))}' if sm.get("period") else "") + '</div>')
+        body += "".join(row(_e(k), "", _e(v)) for k, v in sm["lines"])
+        card(sm["title"], body)
+    # --- options forward test
+    try:
+        from backtest import options_paper as op
+        opt = load_options(settings, key)
+        n = len(opt["exits"])
+        card("NIFTY options iron condor (forward paper)",
+             row("બંધ condors", f"{n}/{op.TARGET_TRADES}", "Backtest: NOT TESTED (જૂનો options ડેટા મફત નથી)")
+             + bar(n / op.TARGET_TRADES)
+             + row("કુલ", _money(sum(x.get("net_pnl", 0) for x in opt["exits"])), "", _col(sum(x.get("net_pnl", 0) for x in opt["exits"]))))
+    except Exception as e:
+        card("Options", f'<div class="g-s">Unavailable: {_e(e)}</div>')
+    # --- registry
+    body = "".join(row(_e(x["name"]), _e(x["status"]),
+                       ("Rules: " + ", ".join(x["rules"]) if x["rules"] else "કોઈ paper rule નથી")
+                       + f' · regimes: {_e(x["regimes"])}', BLUE if x["rules"] else MUTED)
+                   for x in gr.registry_rows(STRATEGY_REGISTRY, paper_rule.RULES, trading_mode.strategy_regimes))
+    card("Strategy registry (8)", body)
     card("Garud નો નિયમ", '<div>પહેલાં સાબિતી, પછી પૈસા. દરેક નિયમ ચલાવતાં <b>પહેલાં</b> નક્કી થાય છે; '
                          'પરિણામ જોઈને નિયમ બદલાતો નથી. 30 trades પછી જ પાસ/નાપાસ.</div>')
+
