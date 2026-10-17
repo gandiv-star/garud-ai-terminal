@@ -15,7 +15,7 @@ AMBER, BLUE = "#F59E0B", "#4C8DFF"
 CARD, BORDER, LINE = "#12233D", "#1E3A5F", "#1A2F4D"
 
 VIEWS = {"🏠 આજ": "home", "🧭 Mode": "mode", "🔎 Scanner": "scanner", "📊 Chart": "chart",
-         "📈 Trades": "trades", "🎯 Options": "options",
+         "📈 Trades": "trades", "🛡 Risk": "risk", "🎯 Options": "options",
          "🔬 સંશોધન": "research", "🩺 Health": "health", "🛠 Tools": "tools"}
 DOT = {"ok": GREEN, "warn": AMBER, "bad": RED, "na": MUTED}
 
@@ -252,7 +252,7 @@ def nav(settings) -> str:
 def render(view: str, settings) -> None:
     key = datetime.now(IST).strftime("%Y%m%d%H%M")[:11]   # cache key changes every 10 minutes
     pages = {"home": home, "mode": mode_page, "scanner": scanner_page, "chart": chart_page,
-             "trades": trades_page, "options": options_page, "research": research_page,
+             "trades": trades_page, "risk": risk_page, "options": options_page, "research": research_page,
              "health": health_page}
     try:
         pages[view](settings, key)
@@ -374,6 +374,104 @@ def trades_page(settings, key) -> None:
                        f'₹{t["entry"]:,.1f} → ₹{t["exit"]:,.1f}', _col(t["pnl"])) for t in closed[:30])
     card(f"બંધ trades ({len(closed)})", body or '<div class="g-s">હજી કોઈ trade બંધ થયો નથી</div>')
     guard_card(trades)
+    execution_card(settings, key)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_execution(_settings, key: str) -> dict:
+    import garud_risk as gk
+    from backtest import paper_rule, sandbox_mirror
+    db = _db(_settings)
+    trades = [t for t in db.get_trades(limit=5000) if t.strategy_name in paper_rule.RULE_IDS]
+    expected = {o["internal_order_id"] for o in sandbox_mirror.expected_orders(trades, frozenset())}
+    ok = [e.payload or {} for e in db.get_audit_events(sandbox_mirror.EVENT_OK, limit=5000)]
+    bad = [e.payload or {} for e in db.get_audit_events(sandbox_mirror.EVENT_FAIL, limit=2000)]
+    live = {k: len(db.get_audit_events(k, limit=2000)) for k in ("LIVE_ENTRY", "LIVE_GTT", "LIVE_EXIT", "LIVE_ERROR")}
+    return {"sandbox": gk.sandbox_status(expected, ok, bad), "live": live}
+
+
+def execution_card(settings, key) -> None:
+    from backtest.backtest_engine import ChargeModel
+    try:
+        ex = load_execution(settings, key)
+    except Exception as e:
+        card("Execution", f'<div class="g-s">Unavailable: {_e(e)}</div>')
+        return
+    sb, lv = ex["sandbox"], ex["live"]
+    cm = ChargeModel()
+    sb_status = GREEN if not sb["missing"] else AMBER
+    body = (row("📄 Paper", "ચાલુ", "Garud ના પોતાના નિયમોથી નોંધાયેલા trades — ઉપરના બધા આંકડા આ જ છે")
+            + row("🧪 Sandbox (Upstox test orders)", f'{sb["placed"]}/{sb["expected"]}',
+                  ("બધા paper orders sandbox માં પહોંચ્યા" if not sb["missing"] else
+                   f'{len(sb["missing"])} બાકી/નિષ્ફળ: ' + ", ".join(_e(x) for x in sb["missing"][:4])), sb_status)
+            + row("💰 Live (અસલ પૈસા)", "OFF" if not lv["LIVE_ENTRY"] else f'{lv["LIVE_ENTRY"]} entries',
+                  f'live orders: entries {lv["LIVE_ENTRY"]} · stops {lv["LIVE_GTT"]} · exits {lv["LIVE_EXIT"]} · errors {lv["LIVE_ERROR"]}',
+                  GREEN if not lv["LIVE_ERROR"] else RED)
+            + row("ખર્ચની ધારણા (delivery)", "", f'STT {cm.stt_pct}% બંને બાજુ · exchange {cm.exchange_charges_pct}% · '
+                  f'stamp {cm.stamp_duty_pct}% (ખરીદી) · SEBI {cm.sebi_charges_pct}% · GST 18% · brokerage ₹{cm.brokerage_flat:.0f}'))
+    card("Execution — paper / sandbox / live અલગ", body + '<div class="g-s" style="margin-top:6px">ત્રણેયના P&L ક્યારેય ભેગા થતા નથી.</div>')
+
+
+def risk_page(settings, key) -> None:
+    import garud_risk as gk
+    from backtest import live_guard, paper_rule
+    trades = load_trades(settings, key)
+    open_t = [t for t in trades if t["exit"] is None]
+    prices = last_prices(tuple(sorted({t["symbol"] for t in open_t}))) if open_t else {}
+    ex = gk.paper_exposure(open_t, prices)
+    h = load_health(settings, key)
+    by = {c.name: c for c in h["checks"]}
+    elig = "".join(row(f'<span class="g-dot" style="background:{DOT.get(by[n].status, MUTED)}"></span>{_e(n)}',
+                       _e(by[n].value), _e(by[n].detail)) for n in ("Live orders", "Risk / kill switch") if n in by)
+    try:
+        m = load_mode(settings, key)
+        elig += row("આજનો mode", _e(m["mode"]), _e(m["reason"]), mode_color(m["mode"]))
+    except Exception:
+        pass
+    card("Trading eligibility", elig)
+    titles = {r.rule_id: r.title for r in paper_rule.RULES}
+    body = row("ખુલ્લા trades", str(ex["count"]), f'{ex["priced"]} ના હાલના ભાવ મળ્યા')
+    body += row("રોકાયેલી રકમ (entry ભાવે)", f'₹{ex["total"]:,.0f}', f'દરેક rule ની મૂડી ₹{gk.CAPITAL_PER_RULE:,.0f}')
+    for rid, v in ex["by_rule"].items():
+        body += row(_e(titles.get(rid, rid)), f'₹{v:,.0f}', f'{v / gk.CAPITAL_PER_RULE * 100:.0f}% of ₹1 લાખ',
+                    RED if v > gk.CAPITAL_PER_RULE else None) + bar(v / gk.CAPITAL_PER_RULE)
+    body += row("બધા stops વાગે તો નુકસાન", _money(-ex["open_risk"]), "હાલના ભાવથી stop સુધી (gap-down માં વધી શકે)", RED)
+    body += row("ખુલ્લા trades નો નફો/નુકસાન", _money(ex["unrealised"]), "", _col(ex["unrealised"]))
+    card("📄 Paper exposure", body)
+    tot = ex["total"] or 1
+    sec = "".join(row(_e(k), f'{v / tot * 100:.0f}%', f'₹{v:,.0f}', AMBER if v / tot > 0.30 else None)
+                  for k, v in ex["by_sector"].items())
+    if ex["multi_rule_symbols"]:
+        sec += row("એક stock ઘણા rules માં", ", ".join(_e(s) for s in ex["multi_rule_symbols"]),
+                   "paper માં બરાબર; live માં guard એક stock ને 20% સુધી રાખશે", AMBER)
+    card("Concentration (sector) — 30% ઉપર પીળું", sec or '<div class="g-s">કોઈ ખુલ્લો trade નથી</div>')
+    st_rows = "".join(row(f'{_e(s)} · {_e(titles.get(r, r))}', f'{d:+.1f}%', f'હાલ ₹{p:,.1f} · stop ₹{stp:,.1f}',
+                          AMBER if d <= gk.STOP_NEAR_PCT else None) for s, r, p, stp, d in ex["stops"][:10])
+    card(f"Stop-loss થી અંતર ({len(ex['near_stop'])} trade {gk.STOP_NEAR_PCT:.0f}% અંદર)",
+         st_rows or '<div class="g-s">ભાવ ઉપલબ્ધ નથી</div>')
+    dd = ""
+    for r in paper_rule.RULES:
+        closed = sorted([t for t in trades if t["rule"] == r.rule_id and t["pnl"] is not None], key=lambda t: t["exit_date"])
+        mdd, cur = gk.drawdown([t["pnl"] for t in closed])
+        dd += row(_e(r.title), _money(-mdd) if mdd else "₹0", f'હાલનો ઘટાડો {_money(-cur) if cur else "₹0"} · {len(closed)} બંધ trades',
+                  RED if mdd else None)
+    card("Drawdown (બંધ trades, paper)", dd)
+    cfg = live_guard.GuardConfig.from_env()
+    today = datetime.now(IST).date()
+    month_paper = gk.month_realised([t for t in trades if t["pnl"] is not None], today)
+    lim = (row("Live: મૂડી / trades / એક stock", f'₹{cfg.capital:,.0f}', f'વધુમાં વધુ {cfg.max_open} trades · એક stock ≤ {cfg.max_stock_pct:.0f}%')
+           + row("Live: મહિનાની નુકસાન મર્યાદા", f'₹{cfg.monthly_loss_limit:,.0f}', "પહોંચે તો નવી ખરીદી આપમેળે બંધ")
+           + row("Live: દિવસની મર્યાદા", "OFF" if cfg.daily_loss_limit <= 0 else f'₹{cfg.daily_loss_limit:,.0f}', "16 ઓક્ટો એ તમારા નિર્ણયથી બંધ")
+           + row("આ મહિને paper નું બંધ P&L", _money(month_paper), "માત્ર માહિતી — મર્યાદા live પર લાગે", _col(month_paper)))
+    try:
+        from backtest import options_paper as op
+        on = sum(x.get("net_pnl", 0) for x in load_options(settings, key)["exits"])
+        lim += row("Options circuit breaker", "PAUSED" if on <= op.MAX_DRAWDOWN_STOP else "OK",
+                   f'કુલ {_money(on)} · ₹{-op.MAX_DRAWDOWN_STOP:,.0f} નુકસાને નવા condors બંધ',
+                   RED if on <= op.MAX_DRAWDOWN_STOP else GREEN)
+    except Exception:
+        pass
+    card("Limits અને circuit breakers", lim + '<div class="g-s" style="margin-top:6px">Risk નિયમો ક્યારેય AI થી બદલાતા નથી.</div>')
 
 
 def guard_card(trades: list) -> None:
