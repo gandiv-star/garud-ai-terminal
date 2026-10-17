@@ -105,6 +105,8 @@ def build_figure(s: dict, show_from: int, markers: list, levels: list, title: st
     fig.update_yaxes(gridcolor=GRID)
     for r, t in ((2, "Vol"), (3, "RSI"), (4, "MACD")):
         fig.update_yaxes(title_text=t, row=r, col=1)
+    fig.update_yaxes(range=[0, 100], tickvals=[30, 50, 70], row=3, col=1)   # RSI always 0-100
+    fig.update_layout(dragmode=False)                                       # no accidental pan/zoom on phones
     return fig
 
 

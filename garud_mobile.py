@@ -484,6 +484,14 @@ def live_scan(_settings, key: str) -> dict:
     return snap
 
 
+def _px(v) -> str:
+    return "—" if v is None else f"₹{v:,.1f}"
+
+
+def _pc(v, sign=True) -> str:
+    return "—" if v is None else (f"{v:+.1f}%" if sign else f"{v:.1f}%")
+
+
 def scanner_page(settings, key) -> None:
     snap = st.session_state.get("_g_live_scan") or load_scan(settings, key)
     if st.button("🔄 હમણાં નવો scan (આશરે 1 મિનિટ)", use_container_width=True):
@@ -509,9 +517,8 @@ def scanner_page(settings, key) -> None:
             f'<div class="g-card" style="padding:10px 14px;margin-bottom:6px">'
             f'<div style="display:flex;justify-content:space-between"><b>{_e(r["symbol"])}</b>'
             f'<span class="g-pill" style="background:{col}22;color:{col}">{_e(r["action"])}</span></div>'
-            f'<div class="g-s">₹{r["close"] if r["close"] is not None else "—"} · {_e(r["date"])} · '
-            f'SMA20 થી {r["trend_pct"] if r["trend_pct"] is not None else "—"}% · 10d {r["mom10_pct"] if r["mom10_pct"] is not None else "—"}% · '
-            f'ATR {r["atr_pct"] if r["atr_pct"] is not None else "—"}%</div>'
+            f'<div class="g-s">{_px(r["close"])} · {_e(r["date"])} · SMA20 થી {_pc(r["trend_pct"])} · '
+            f'10 દિવસ {_pc(r["mom10_pct"])} · ATR {_pc(r["atr_pct"], sign=False)}</div>'
             f'<div style="font-size:.85rem;margin-top:3px">{_e(r["reason"])}</div></div>', unsafe_allow_html=True)
         with st.expander(f'{r["symbol"]} — વિગત'):
             for ch in r.get("checks", []):
@@ -563,7 +570,7 @@ def chart_page(settings, key) -> None:
     last = bars[-1]
     try:
         fig = gc.build_figure(s, start, markers, levels, f"{sym} · daily · છેલ્લો ₹{last.close:,.1f}")
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False})
     except Exception as e:
         st.warning(f"Advanced chart unavailable ({e}) — simple chart:")
         st.line_chart({"close": s["close"][start:]})
