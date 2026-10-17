@@ -91,6 +91,16 @@ def main() -> int:
 
     text = "\n".join(lines)
     print(text)
+    # Heartbeat for the app's System Health screen (never contains secrets).
+    try:
+        db.save_audit_event(AuditEvent(
+            timestamp=datetime.now(timezone.utc), event_type="PIPELINE_RUN", symbol=None,
+            payload={"started": report.started, "source": os.getenv("RUN_SOURCE", ""),
+                     "kill_switch": kill_switch, "entries": len(report.entries), "exits": len(report.exits),
+                     "errors": [str(e)[:160] for e in report.errors[:5]], "error_count": len(report.errors),
+                     "sandbox_failed": len(mirror.failed), "live_errors": len(live.errors)}))
+    except Exception as e:
+        print(f"Heartbeat not saved: {e}")
 
     now = paper_rule.now_ist()
     evening = now.time() >= paper_rule.MARKET_CLOSE_IST

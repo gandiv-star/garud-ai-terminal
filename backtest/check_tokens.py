@@ -68,8 +68,28 @@ def status(env: dict, now: datetime) -> list:
     return out
 
 
+def save_status(env: dict, now: datetime) -> None:
+    """Stores only expiry dates (never the tokens) for the app's System Health screen."""
+    payload = {}
+    for name in TOKENS:
+        tok = (env.get(name) or "").strip()
+        exp = jwt_expiry(tok) if tok else None
+        payload[name] = {"set": bool(tok), "expires": exp.isoformat() if exp else None}
+    try:
+        from config.settings import load_settings
+        from database.db import Database
+        from database.models import AuditEvent
+        db = Database(load_settings())
+        db.connect()
+        db.save_audit_event(AuditEvent(timestamp=now, event_type="TOKEN_STATUS", symbol=None, payload=payload))
+    except Exception as e:
+        print(f"Token status not saved: {e}")
+
+
 def main() -> int:
     now = datetime.now(timezone.utc)
+    if os.getenv("DATABASE_URL", "").startswith("postgres"):
+        save_status(os.environ, now)
     msgs = warnings(os.environ, now)
     manual = os.getenv("RUN_SOURCE", "").strip().lower() == "manual"
     if manual:
