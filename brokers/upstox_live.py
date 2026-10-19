@@ -3,7 +3,8 @@
 Nothing here can send an order unless ALL of these hold at call time:
   1. TRADING_MODE is CONTROLLED_LIVE or LIVE
   2. LIVE_ORDERS_ENABLED == "YES"
-  3. the order value (qty x reference price) is within LIVE_MAX_ORDER_VALUE (default Rs.25,000)
+  3. the order value (qty x reference price) is within LIVE_MAX_ORDER_VALUE (default Rs.25,000;
+     a value that is set but invalid blocks every BUY — fail closed)
 The gates are checked before any network call.
 
 Live requirements that no code can remove (SEBI / Upstox):
@@ -16,6 +17,7 @@ stop (valid up to 1 year). Upstox executes a triggered GTT as a LIMIT order at t
 trigger price, so in a gap-down below the stop it may not fill — the automatic run
 must then close the position at market (handled by the exit logic, not here).
 """
+import math
 import os
 
 import requests
@@ -60,11 +62,31 @@ def live_orders_allowed() -> tuple[bool, str]:
     return True, "live orders enabled"
 
 
-def max_order_value() -> float:
+MAX_ORDER_VALUE_CEILING = 1e7
+
+
+def max_order_value_problem() -> str | None:
+    """None when LIVE_MAX_ORDER_VALUE is unset/empty (default used) or a valid number;
+    otherwise why it is unusable — then every live BUY is refused (fail closed)."""
+    raw = os.getenv("LIVE_MAX_ORDER_VALUE", "").strip()
+    if not raw:
+        return None
     try:
-        return float(os.getenv("LIVE_MAX_ORDER_VALUE", DEFAULT_MAX_ORDER_VALUE))
-    except ValueError:
+        v = float(raw)
+    except (ValueError, OverflowError):
+        return f"LIVE_MAX_ORDER_VALUE='{raw[:20]}' is not a number"
+    if not math.isfinite(v) or v <= 0 or v > MAX_ORDER_VALUE_CEILING:
+        return f"LIVE_MAX_ORDER_VALUE={raw[:20]} must be between 1 and {MAX_ORDER_VALUE_CEILING:,.0f}"
+    return None
+
+
+def max_order_value() -> float:
+    """The per-order cap. Unset/empty -> default; invalid (text, inf, nan, <= 0, too big) -> 0,
+    so no BUY can pass (previously 'inf' or 'nan' silently disabled the cap)."""
+    raw = os.getenv("LIVE_MAX_ORDER_VALUE", "").strip()
+    if not raw:
         return DEFAULT_MAX_ORDER_VALUE
+    return 0.0 if max_order_value_problem() else float(raw)
 
 
 class UpstoxLiveBroker(UpstoxSandboxBroker):
@@ -84,6 +106,9 @@ class UpstoxLiveBroker(UpstoxSandboxBroker):
         self._gate()
         if order.side == OrderSide.SELL:
             return  # exits reduce risk: never blocked by the value cap
+        bad = max_order_value_problem()
+        if bad:
+            raise LiveOrdersDisabled(bad)
         if not order.price or order.price <= 0:
             raise LiveOrdersDisabled("reference price (OrderRequest.price) is required for the value cap")
         value = order.quantity * order.price
