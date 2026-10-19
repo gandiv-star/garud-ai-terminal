@@ -34,7 +34,9 @@ def evidence_summary(p: dict) -> dict:
                       ("Favoured → confirmed cells", f'{p.get("favoured_cells", "—")} → {p.get("confirmed_cells", "—")}'),
                       ("Test PF: પસંદગી vs બધા", f'{sel.get("pf", "—")} vs {base.get("pf", "—")}'),
                       ("Test avg/trade: પસંદગી vs બધા", f'₹{sel.get("avg", "—")} vs ₹{base.get("avg", "—")}'),
-                      ("Out-of-sample split", str(p.get("split_date", "—")))]}
+                      ("Out-of-sample split", str(p.get("split_date", "—"))),
+                      ("Version", f'v{p.get("version", 1)} · fills: {(p.get("fill_model") or {}).get("name", "legacy")}'
+                                  + (" · RS bug fixed" if (p.get("version") or 1) >= 2 else " · RS bug હતો (જૂનું)"))]}
 
 
 def longterm_rows(p: dict) -> list:

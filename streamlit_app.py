@@ -263,6 +263,8 @@ with tab_analysis:
             c8.metric("Open positions", r["open_position_count"])
             c9.metric("Portfolio drawdown", f"{r['real_drawdown_pct']:.2f}%")
 
+            st.caption("Risk Engine verdict applies only to this manual Tools analysis — the automatic "
+                       "pipeline does not use these limits.")
             if r["verdict"].approved:
                 st.success(f"Risk Engine: APPROVED")
             else:
@@ -1268,6 +1270,12 @@ with tab_market:
 with tab_risk:
     st.subheader("Risk Center")
     st.caption("Live risk posture across your paper-trade history, checked against your configured limits.")
+    st.warning(
+        "⚠️ આ પાનાની મર્યાદાઓ (daily loss %, drawdown %, max open positions, sector %) માત્ર આ Tools tab ના "
+        "manual analysis માટે છે — automatic paper rules અને live pipeline પર લાગુ થતી **નથી**, "
+        "એટલે તેને સક્રિય સુરક્ષા ન ગણશો. Automatic run ની સાચી સુરક્ષા: 🛡 Risk tab માં 'Limits અને circuit breakers' "
+        "(live guard: મૂડી, max open, એક stock %, મહિનાની નુકસાન મર્યાદા) અને GitHub variable GARUD_KILL_SWITCH."
+    )
 
     try:
         db_rc = Database(settings)
@@ -1330,18 +1338,23 @@ with tab_risk:
             st.info("No open positions — no sector exposure.")
 
         st.divider()
-        st.write("**Configured limits:**")
+        st.write("**Configured limits (Tools analysis only — NOT enforced by the automatic pipeline):**")
+        _na = "No — display/manual check only"
         limits_df = pd.DataFrame([
-            {"limit": "Max risk per trade", "value": f"{settings.risk.max_risk_per_trade_pct}%"},
-            {"limit": "Max daily loss", "value": f"{settings.risk.max_daily_loss_pct}%"},
-            {"limit": "Max portfolio drawdown", "value": f"{settings.risk.max_portfolio_drawdown_pct}%"},
-            {"limit": "Max open positions", "value": settings.risk.max_open_positions},
-            {"limit": "Max sector exposure", "value": f"{settings.risk.max_sector_exposure_pct}%"},
+            {"limit": "Max risk per trade", "value": f"{settings.risk.max_risk_per_trade_pct}%",
+             "applies to automatic run": "No — but each paper rule has its own fixed 1% risk (not read from here)"},
+            {"limit": "Max daily loss", "value": f"{settings.risk.max_daily_loss_pct}%", "applies to automatic run": _na},
+            {"limit": "Max portfolio drawdown", "value": f"{settings.risk.max_portfolio_drawdown_pct}%",
+             "applies to automatic run": _na},
+            {"limit": "Max open positions", "value": settings.risk.max_open_positions, "applies to automatic run": _na},
+            {"limit": "Max sector exposure", "value": f"{settings.risk.max_sector_exposure_pct}%",
+             "applies to automatic run": _na},
         ])
         st.dataframe(limits_df)
 
         st.divider()
-        st.write("**Kill switch:**")
+        st.write("**Kill switch (this browser session's Tools actions only):**")
+        st.caption("Automatic paper/live runs ignore this button — they obey the GitHub variable GARUD_KILL_SWITCH.")
         if st.session_state.get("kill_switch_engaged"):
             st.error("TRIGGERED — all new trade actions are blocked.")
         else:

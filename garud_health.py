@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
-APP_VERSION = "2026.10.16-A"
+APP_VERSION = "2026.10.18-P1"
 OK, WARN, BAD, NA = "ok", "warn", "bad", "na"
 
 
@@ -115,7 +115,20 @@ def check_ai(env: dict) -> Check:
     return Check("AI (Gemini)", OK, "Configured", "key સેટ છે · 'AI ચકાસો' દબાવી અસલ જવાબ તપાસી શકાય")
 
 
-def check_live(trading_mode: str) -> Check:
+def check_live(trading_mode: str, last_run=None) -> Check:
+    """Prefer what the AUTOMATIC run reported (that is where orders would be sent); the app's own
+    TRADING_MODE is only a fallback for runs older than this check."""
+    live = ((last_run.payload or {}).get("live") if last_run else None) or None
+    if live:
+        if live.get("active") and live.get("problems"):
+            return Check("Live orders", BAD, "ON · BUY બંધ", "Live ચાલુ પણ limit setting ખોટું — નવી ખરીદી અટકી છે: "
+                         + "; ".join(live["problems"])[:160])
+        if live.get("active"):
+            return Check("Live orders", WARN, "ON", "Automatic run અસલ orders મોકલી શકે — rules: "
+                         + ", ".join(live.get("rules") or []))
+        if live.get("problems"):
+            return Check("Live orders", WARN, "OFF", "Live limit setting ખોટું: " + "; ".join(live["problems"])[:160])
+        return Check("Live orders", OK, "OFF", "Automatic run: " + str(live.get("reason") or "live gates બંધ")[:120])
     mode = (trading_mode or "").upper()
     if mode in ("CONTROLLED_LIVE", "LIVE"):
         return Check("Live orders", WARN, mode, "અસલ trading mode — GitHub gates પણ જરૂરી")
@@ -153,7 +166,7 @@ def all_checks(db_res: dict, market: dict | None, market_err: str, now: datetime
     return ([db_res["db"], check_market_data(market, now, market_err), check_pipeline(db_res["last_run"], now),
              check_telegram(db_res["last_sent"], now)]
             + check_tokens(db_res["token"], now)
-            + [check_ai(env), check_live(trading_mode), check_risk(db_res["last_run"])])
+            + [check_ai(env), check_live(trading_mode, db_res["last_run"]), check_risk(db_res["last_run"])])
 
 
 def recent_errors(runs: list) -> list:

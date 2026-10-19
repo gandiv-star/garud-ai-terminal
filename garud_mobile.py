@@ -204,8 +204,19 @@ def load_health(_settings, key: str) -> dict:
         market, err = None, str(e)[:160]
     mode = getattr(getattr(_settings, "trading_mode", None), "value", "")
     checks = gh.all_checks(res, market, err, now, dict(os.environ), mode)
+    live = ((res["last_run"].payload or {}).get("live") if res.get("last_run") else None) or None
     return {"checks": checks, "errors": gh.recent_errors(res["runs"]), "overall": gh.overall(checks),
-            "checked": now.strftime("%H:%M")}
+            "checked": now.strftime("%H:%M"), "live": live}
+
+
+def pipeline_guard(h: dict):
+    """(GuardConfig, source note, problems) as the AUTOMATIC run last reported it — the app's own
+    environment does not hold the GitHub LIVE_* variables, so it must not read them itself."""
+    from backtest import live_guard
+    live = (h or {}).get("live") or {}
+    if live.get("guard"):
+        return live_guard.GuardConfig.from_dict(live["guard"]), "છેલ્લા automatic run મુજબ", live.get("problems") or []
+    return live_guard.GuardConfig(), "default (automatic run એ હજી limits report કર્યા નથી)", []
 
 
 def _chip(label: str, status: str) -> str:
@@ -373,7 +384,7 @@ def trades_page(settings, key) -> None:
                        f'{_e(titles.get(t["rule"], t["rule"]))} · {t["entry_date"]:%d %b} → {t["exit_date"]:%d %b} · '
                        f'₹{t["entry"]:,.1f} → ₹{t["exit"]:,.1f}', _col(t["pnl"])) for t in closed[:30])
     card(f"બંધ trades ({len(closed)})", body or '<div class="g-s">હજી કોઈ trade બંધ થયો નથી</div>')
-    guard_card(trades)
+    guard_card(trades, load_health(settings, key))
     execution_card(settings, key)
 
 
@@ -456,12 +467,14 @@ def risk_page(settings, key) -> None:
         dd += row(_e(r.title), _money(-mdd) if mdd else "₹0", f'હાલનો ઘટાડો {_money(-cur) if cur else "₹0"} · {len(closed)} બંધ trades',
                   RED if mdd else None)
     card("Drawdown (બંધ trades, paper)", dd)
-    cfg = live_guard.GuardConfig.from_env()
+    cfg, src, problems = pipeline_guard(h)
     today = datetime.now(IST).date()
     month_paper = gk.month_realised([t for t in trades if t["pnl"] is not None], today)
-    lim = (row("Live: મૂડી / trades / એક stock", f'₹{cfg.capital:,.0f}', f'વધુમાં વધુ {cfg.max_open} trades · એક stock ≤ {cfg.max_stock_pct:.0f}%')
+    lim = (row("Live: મૂડી / trades / એક stock", f'₹{cfg.capital:,.0f}', f'વધુમાં વધુ {cfg.max_open} trades · એક stock ≤ {cfg.max_stock_pct:.0f}% · {src}')
            + row("Live: મહિનાની નુકસાન મર્યાદા", f'₹{cfg.monthly_loss_limit:,.0f}', "પહોંચે તો નવી ખરીદી આપમેળે બંધ")
-           + row("Live: દિવસની મર્યાદા", "OFF" if cfg.daily_loss_limit <= 0 else f'₹{cfg.daily_loss_limit:,.0f}', "16 ઓક્ટો એ તમારા નિર્ણયથી બંધ")
+           + row("Live: દિવસની મર્યાદા", "OFF" if cfg.daily_loss_limit <= 0 else f'₹{cfg.daily_loss_limit:,.0f}',
+                 "16 ઓક્ટો એ તમારા નિર્ણયથી બંધ" if cfg.daily_loss_limit <= 0 else "નવી ખરીદી આપમેળે બંધ")
+           + (row("⚠️ Live limit setting ખોટું", "BUY બંધ", _e("; ".join(problems)), RED) if problems else "")
            + row("આ મહિને paper નું બંધ P&L", _money(month_paper), "માત્ર માહિતી — મર્યાદા live પર લાગે", _col(month_paper)))
     try:
         from backtest import options_paper as op
@@ -474,10 +487,10 @@ def risk_page(settings, key) -> None:
     card("Limits અને circuit breakers", lim + '<div class="g-s" style="margin-top:6px">Risk નિયમો ક્યારેય AI થી બદલાતા નથી.</div>')
 
 
-def guard_card(trades: list) -> None:
+def guard_card(trades: list, h: dict | None = None) -> None:
     """What the live safety limits would have done if all paper trades had been real."""
     from backtest import live_guard
-    cfg = live_guard.GuardConfig.from_env()
+    cfg, src, problems = pipeline_guard(h)
     s = live_guard.simulate(trades, cfg)
     reasons = ", ".join(f"{k}: {v}" for k, v in s["reasons"].items()) or "—"
     body = (row("Trades (બધા tests)", f'{s["taken"]}/{s["trades"]} લેવાત',
@@ -487,7 +500,9 @@ def guard_card(trades: list) -> None:
             + row("અત્યારે રોકાયેલી મૂડી", f'₹{s["open_value_now"]:,.0f}',
                   f'મર્યાદા ₹{cfg.capital:,.0f} · વધુમાં વધુ {cfg.max_open} trades · એક stock ≤ {cfg.max_stock_pct:.0f}% · '
                   f'મહિને નુકસાન ≤ ₹{cfg.monthly_loss_limit:,.0f}'
-                  + (f' · દિવસે ≤ ₹{cfg.daily_loss_limit:,.0f}' if cfg.daily_loss_limit > 0 else '')))
+                  + (f' · દિવસે ≤ ₹{cfg.daily_loss_limit:,.0f}' if cfg.daily_loss_limit > 0 else '') + f' · {src}'))
+    if problems:
+        body += row("⚠️ Live limit setting ખોટું", "BUY બંધ", _e("; ".join(problems)), RED)
     card("🛡 અસલ trading ની સુરક્ષા — જો આ trades અસલ હોત", body)
 
 
