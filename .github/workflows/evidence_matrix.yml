@@ -1,7 +1,13 @@
 name: Evidence matrix (Regime x Strategy)
 
+# Manual only. Each run is stored as a NEW EVIDENCE_MATRIX event (older runs are kept).
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      fill_model:
+        description: "gap_aware_v2 (default: gap-down stops at the open + slippage) or legacy"
+        required: false
+        default: "gap_aware_v2"
 
 jobs:
   run:
@@ -21,6 +27,7 @@ jobs:
           TRADING_MODE: PAPER
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FILL_MODEL: ${{ github.event.inputs.fill_model || 'gap_aware_v2' }}
         run: python backtest/run_evidence_matrix.py
       - name: Save matrix CSV
         if: always()

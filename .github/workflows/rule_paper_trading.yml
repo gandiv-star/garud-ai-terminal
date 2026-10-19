@@ -49,6 +49,13 @@ jobs:
           LIVE_RULES: ${{ vars.LIVE_RULES }}
           LIVE_START_DATE: ${{ vars.LIVE_START_DATE }}
           LIVE_MAX_ORDER_VALUE: ${{ vars.LIVE_MAX_ORDER_VALUE }}
+          # Live portfolio guard (backtest/live_guard.py). Unset = safe default;
+          # set but invalid = every new live BUY is blocked until fixed (exits continue).
+          LIVE_CAPITAL: ${{ vars.LIVE_CAPITAL }}
+          LIVE_MAX_OPEN: ${{ vars.LIVE_MAX_OPEN }}
+          LIVE_MAX_STOCK_PCT: ${{ vars.LIVE_MAX_STOCK_PCT }}
+          LIVE_DAILY_LOSS_LIMIT: ${{ vars.LIVE_DAILY_LOSS_LIMIT }}
+          LIVE_MONTHLY_LOSS_LIMIT: ${{ vars.LIVE_MONTHLY_LOSS_LIMIT }}
         run: python backtest/run_rule_paper.py
       - name: Run options paper (NIFTY iron condor, no orders)
         if: success() || failure()

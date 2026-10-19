@@ -1,0 +1,56 @@
+name: Tests
+
+# Regression tests for paper trading, live guard, risk limits and the broker sandbox.
+# Uses fake brokers and a fake database: NO secrets, NO network orders, NO database writes.
+on:
+  push:
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies (same requirements.txt as the app and the automatic run)
+        run: pip install -r requirements.txt
+      - name: Show installed versions
+        run: |
+          {
+            echo "### Installed versions"
+            echo '```'
+            pip freeze | grep -iE '^(pandas|numpy|python-dotenv|requests|pydantic|sqlalchemy|scikit-learn|pytest|yfinance|streamlit|plotly|psycopg|psycopg-binary)=='
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Every Python file compiles
+        run: python -m compileall -q backtest brokers config core data database execution features llm regime risk strategies garud_chart.py garud_health.py garud_mobile.py garud_research.py garud_risk.py streamlit_app.py
+      - name: Run tests
+        run: python -m pytest tests -q -p no:cacheprovider --junitxml=test-results.xml
+      - name: Test summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+          try:
+              r = ET.parse("test-results.xml").getroot()
+              s = r if r.tag == "testsuite" else r.find("testsuite")
+              t, f, e, k = (int(s.get(x, 0)) for x in ("tests", "failures", "errors", "skipped"))
+              print(f"### Tests: {t - f - e - k} passed, {f} failed, {e} errors, {k} skipped")
+          except Exception as ex:
+              print(f"### Tests: no result file ({ex})")
+          PY
+      - name: Save test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.xml
+          if-no-files-found: ignore
