@@ -3,7 +3,7 @@ database (never typed in). A test that was never run is shown as NOT RUN / NOT T
 from datetime import timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
-STUDIES = ("PORTFOLIO_15Y", "EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
+STUDIES = ("MOMENTUM_200", "PORTFOLIO_15Y", "EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
 SAME_ASSUMPTIONS = ("Same engine for every strategy: entry at the next day's open, stop 2×ATR, "
                     "1% risk of ₹1,00,000 per trade, real delivery charges (STT, exchange, stamp, GST); "
                     "intraday and options tests use their own real cost models.")
@@ -76,6 +76,13 @@ def intraday_summary(p: dict) -> dict:
             "period": f'{p.get("first_date", "—")} → {p.get("last_date", "—")}'}
 
 
+def momentum200_summary(p: dict) -> dict:
+    c = portfolio_summary(p)
+    c["title"] = "Engine 1 — Momentum 200 (15 વર્ષ, ₹1 લાખ)"
+    c["lines"].append(("⚠️ નોંધ", "આજનું NIFTY 200 લિસ્ટ વપરાયું — પરિણામ થોડું વધુ સારું દેખાય"))
+    return c
+
+
 def portfolio_summary(p: dict) -> dict:
     """Phase 2: one shared account, 15 years. PASS = CAGR > 7% and max drawdown <= 25%."""
     passed = p.get("passed") or []
@@ -93,7 +100,8 @@ def portfolio_summary(p: dict) -> dict:
 
 def study_cards(studies: dict) -> list:
     """[(kind, when or None, summary dict or None)] in a fixed order."""
-    makers = {"PORTFOLIO_15Y": portfolio_summary,
+    makers = {"MOMENTUM_200": momentum200_summary,
+              "PORTFOLIO_15Y": portfolio_summary,
               "EVIDENCE_MATRIX": evidence_summary,
               "LONGTERM_COMPARISON": lambda p: longterm_summary(p, "લાંબા ગાળાની સરખામણી (5 વર્ષ)", "CFG"),
               "LONGTERM_15Y": lambda p: longterm_summary(p, "15 વર્ષ (સાચું NIFTY 50 લિસ્ટ)", "FG"),
