@@ -16,7 +16,13 @@ Pre-registered method (fixed 8 Oct 2026, before running):
 """
 from datetime import date, datetime, timedelta
 
-from backtest.backtest_engine import BacktestEngine, ChargeModel, _load_universe
+from backtest.backtest_engine import BacktestEngine, ChargeModel, FillModel, _load_universe
+
+# v1 (8 Oct 2026): legacy fills; Relative Strength saw NIFTY's position as 0 (bug).
+# v2 (18 Oct 2026): Relative Strength sees NIFTY's real position vs its SMA50, and by default
+#     gap-aware stop fills + slippage (FillModel v2). Method and thresholds are unchanged.
+#     v1 results stay in the database untouched.
+VERSION = 2
 
 HOLDING_DAYS = (10, 40)
 TRAIN_DAYS = 3 * 365
@@ -40,7 +46,7 @@ def _stats(pnls: list) -> dict:
     }
 
 
-def collect(universe, registry: dict, end_date: date, progress=None):
+def collect(universe, registry: dict, end_date: date, progress=None, fill_model: FillModel | None = None):
     """Returns (trades, split_date). trades: list of dicts(config, regime, entry_date, net)."""
     end = datetime.combine(end_date, datetime.min.time()) + timedelta(days=1)
     start = end - timedelta(days=TOTAL_DAYS)
@@ -57,7 +63,8 @@ def collect(universe, registry: dict, end_date: date, progress=None):
                 progress(done, total, f"{sym} {name} {hold}d")
             try:
                 res = engine.run(sym, start, end, max_holding_days=hold, strategy=registry[name](),
-                                 nifty_series=nifty, bars=bars, features_cache=cache)
+                                 nifty_series=nifty, bars=bars, features_cache=cache,
+                                 fill_model=fill_model)
             except Exception:
                 continue
             for t in res.trades:

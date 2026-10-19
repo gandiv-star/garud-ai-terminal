@@ -3,7 +3,9 @@
 Every new live BUY is checked against the money actually at work, so real trading can
 never use more capital than exists, pile into one stock, or keep buying after losses.
 
-Limits (GitHub variables; safe defaults used when unset or invalid):
+Limits (GitHub variables, passed by .github/workflows/rule_paper_trading.yml; a safe default is
+used when a variable is unset/empty; a variable that is SET but invalid blocks all new live BUYs
+until fixed — fail closed; exits continue):
   LIVE_CAPITAL              total money for live trading          default Rs.1,00,000
   LIVE_MAX_OPEN             max open live positions                default 5
   LIVE_MAX_STOCK_PCT        max % of capital in one stock          default 20
@@ -27,6 +29,46 @@ def _num(name: str, default: float, minimum: float = 0.0, maximum: float = 1e9) 
     return v if math.isfinite(v) and minimum < v <= maximum else default
 
 
+# name -> (lowest allowed, highest allowed, zero allowed?, whole number?)
+# Unset or empty = the safe default. SET but invalid = a problem -> new live BUYs are blocked
+# (fail closed) until it is fixed; exits are never blocked.
+LIMITS = {
+    "LIVE_CAPITAL": (1.0, 1e9, False, False),
+    "LIVE_MAX_OPEN": (1.0, 1000.0, False, True),
+    "LIVE_MAX_STOCK_PCT": (0.0, 100.0, False, False),
+    "LIVE_DAILY_LOSS_LIMIT": (0.0, 1e9, True, False),      # 0 = off
+    "LIVE_MONTHLY_LOSS_LIMIT": (1.0, 1e9, False, False),   # can never be switched off
+    "LIVE_MAX_ORDER_VALUE": (1.0, 1e7, False, False),
+}
+
+
+def problem(name: str) -> str | None:
+    """Why the variable's value is unusable, or None when it is unset/empty or valid."""
+    raw = os.getenv(name, "")
+    if not raw.strip():
+        return None
+    lo, hi, zero_ok, whole = LIMITS[name]
+    shown = raw.strip()[:20]
+    try:
+        v = float(raw.strip())
+    except (ValueError, OverflowError):
+        return f"{name}='{shown}' is not a number (write digits only, e.g. 50000)"
+    if not math.isfinite(v):
+        return f"{name}='{shown}' is not a finite number"
+    if zero_ok and v == 0:
+        return None
+    if v < lo or v > hi or (not zero_ok and v <= 0):
+        return f"{name}={shown} is outside the allowed range ({lo:g} to {hi:g})"
+    if whole and v != int(v):
+        return f"{name}={shown} must be a whole number"
+    return None
+
+
+def config_problems() -> list:
+    """Every live-limit variable that is set but invalid (empty list = all usable)."""
+    return [p for p in (problem(n) for n in LIMITS) if p]
+
+
 @dataclass(frozen=True)
 class GuardConfig:
     capital: float = 100000.0
@@ -35,8 +77,27 @@ class GuardConfig:
     daily_loss_limit: float = 0.0          # 0 = off (decided 16 Oct 2026: don't miss same-day chances)
     monthly_loss_limit: float = 6000.0
 
+    def as_dict(self) -> dict:
+        return {"capital": self.capital, "max_open": self.max_open, "max_stock_pct": self.max_stock_pct,
+                "daily_loss_limit": self.daily_loss_limit, "monthly_loss_limit": self.monthly_loss_limit}
+
+    @classmethod
+    def from_dict(cls, d: dict | None) -> "GuardConfig":
+        """Rebuilds the limits the automatic run reported (PIPELINE_RUN); defaults if unreadable."""
+        d = d or {}
+        base = cls()
+        try:
+            return cls(capital=float(d.get("capital", base.capital)), max_open=int(d.get("max_open", base.max_open)),
+                       max_stock_pct=float(d.get("max_stock_pct", base.max_stock_pct)),
+                       daily_loss_limit=float(d.get("daily_loss_limit", base.daily_loss_limit)),
+                       monthly_loss_limit=float(d.get("monthly_loss_limit", base.monthly_loss_limit)))
+        except (TypeError, ValueError):
+            return base
+
     @classmethod
     def from_env(cls) -> "GuardConfig":
+        """Limits to use; an invalid value falls back to its default here, and config_problems()
+        reports it so the executor blocks new BUYs (fail closed)."""
         d = cls()
         return cls(capital=_num("LIVE_CAPITAL", d.capital),
                    max_open=max(1, int(_num("LIVE_MAX_OPEN", d.max_open, maximum=1000))),

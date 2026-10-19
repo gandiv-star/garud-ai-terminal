@@ -130,9 +130,16 @@ def position_size(rule: Rule, entry_price: float, atr: float | None) -> tuple[fl
     return round(stop_price, 2), qty
 
 
+# Gap-aware paper stops (exit at min(stop, open) on a gap-down) — prepared 18 Oct 2026 but
+# OFF: switching it on changes how future paper exits are priced, so it waits for the owner's
+# approval. Already-closed paper trades are never re-priced either way.
+GAP_AWARE_STOPS = False
+
+
 def rule_exit(entry_timestamp: datetime, stop_price: float, bars: list, max_holding_days: int,
-              now: datetime | None = None):
+              now: datetime | None = None, gap_aware: bool | None = None):
     """Returns (reason, exit_price, exit_date) or None. Replays every bar since entry."""
+    gap_aware = GAP_AWARE_STOPS if gap_aware is None else gap_aware
     now = now or now_ist()
     entry_date = _to_ist_date(entry_timestamp)
     done = {id(b) for b in completed_bars(bars, now)}
@@ -142,7 +149,8 @@ def rule_exit(entry_timestamp: datetime, stop_price: float, bars: list, max_hold
         if d < entry_date:
             continue
         if b.low <= stop_price:
-            return "STOP_LOSS", round(stop_price, 2), d
+            fill = min(stop_price, b.open) if gap_aware and _valid_price(b.open) else stop_price
+            return "STOP_LOSS", round(fill, 2), d
         if d > entry_date and id(b) in done:
             held += 1
             if held >= max_holding_days:

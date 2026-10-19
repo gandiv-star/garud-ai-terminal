@@ -128,6 +128,13 @@ def main() -> int:
     lines += [f"💰 {a}" for a in live.actions]
     lines += [f"💰❌ {e}" for e in live.errors[:8]]
     lines += [f"💰 {n}" for n in live.notes if not n.startswith("Live trading OFF")]
+    try:
+        live_status = live_executor.effective_status()
+    except Exception as e:
+        live_status = {"active": False, "problems": [f"status unavailable: {type(e).__name__}"]}
+    if live_status.get("problems") and not any("blocked until fixed" in n for n in live.notes):
+        lines.append("🛡 Live limit setting problem (new live BUYs would be blocked): "
+                     + "; ".join(live_status["problems"]))
     if mirror.unreconciled:
         lines.append(f"🧪⚠️ {len(mirror.unreconciled)} unreconciled: " + "; ".join(mirror.unreconciled[:5]))
 
@@ -146,7 +153,8 @@ def main() -> int:
             payload={"started": report.started, "source": os.getenv("RUN_SOURCE", ""),
                      "kill_switch": kill_switch, "entries": len(report.entries), "exits": len(report.exits),
                      "errors": [str(e)[:160] for e in report.errors[:5]], "error_count": len(report.errors),
-                     "sandbox_failed": len(mirror.failed), "live_errors": len(live.errors)}))
+                     "sandbox_failed": len(mirror.failed), "live_errors": len(live.errors),
+                     "live": live_status}))
     except Exception as e:
         print(f"Heartbeat not saved: {e}")
 
@@ -156,7 +164,7 @@ def main() -> int:
     # pressing "Run workflow" (RUN_SOURCE=manual) gets the always-send behaviour.
     manual = os.getenv("RUN_SOURCE", "").strip().lower() == "manual"
     activity = (report.entries or report.exits or report.errors or mirror.placed or mirror.failed
-                or live.actions or live.errors or mirror.unreconciled)
+                or live.actions or live.errors or mirror.unreconciled or live_status.get("problems"))
 
     if manual:
         send_telegram(text)

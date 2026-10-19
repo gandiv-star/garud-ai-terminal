@@ -17,11 +17,13 @@ import math
 from datetime import date, datetime, timedelta, timezone
 
 from backtest import paper_rule
-from backtest.backtest_engine import BacktestEngine, ChargeModel, _load_universe
+from backtest.backtest_engine import BacktestEngine, ChargeModel, FillModel, _load_universe
 from database.models import AuditEvent
 
 BENCH_EVENT = "RULE_BENCHMARK"
-BENCH_VERSION = 1
+BENCH_VERSION = 1            # the yardstick the pre-registered checkpoints use (legacy fills) — unchanged
+BENCH_VERSION_V2 = 2         # 18 Oct 2026: same rules, gap-aware stop fills + slippage (FillModel v2);
+                             # stored ALONGSIDE v1 for comparison, never replaces it
 BENCHMARK_END = date(2026, 9, 26)
 BENCHMARK_DAYS = 1825
 Z_WARN = -2.0
@@ -45,7 +47,8 @@ def _summary(pnls: list) -> dict:
     }
 
 
-def compute_benchmarks(rules, registry: dict) -> dict:
+def compute_benchmarks(rules, registry: dict, fill_model: FillModel | None = None,
+                       version: int = BENCH_VERSION) -> dict:
     end = datetime.combine(BENCHMARK_END, datetime.min.time()) + timedelta(days=1)
     start = end - timedelta(days=BENCHMARK_DAYS)
     symbols = sorted({s for r in rules for s in r.universe})
@@ -54,7 +57,7 @@ def compute_benchmarks(rules, registry: dict) -> dict:
     engine = BacktestEngine(ChargeModel())
     out = {}
     for rule in rules:
-        pnls, skipped = [], []
+        pnls, skipped, gaps = [], [], 0
         for sym in rule.universe:
             if sym not in data:
                 skipped.append(sym)
@@ -65,23 +68,28 @@ def compute_benchmarks(rules, registry: dict) -> dict:
                     stop_atr_multiplier=rule.stop_atr_multiplier, risk_pct_per_trade=rule.risk_pct,
                     strategy=registry[rule.strategy_name](), nifty_series=nifty, bars=data[sym],
                     features_cache=caches[sym], allowed_regimes=set(rule.allowed_regimes),
+                    fill_model=fill_model,
                 )
                 pnls.extend(t.net_pnl for t in res.trades)
+                gaps += sum(1 for t in res.trades if t.gap_fill)
             except Exception:
                 skipped.append(sym)
         out[rule.rule_id] = {
-            **_summary(pnls), "rule_id": rule.rule_id, "version": BENCH_VERSION,
+            **_summary(pnls), "rule_id": rule.rule_id, "version": version,
             "period": f"{start.date()} to {BENCHMARK_END}", "skipped": skipped,
         }
+        if fill_model is not None:
+            out[rule.rule_id]["fill_model"] = fill_model.describe()
+            out[rule.rule_id]["gap_stop_fills"] = gaps
     return out
 
 
-def stored_benchmarks(db) -> dict:
+def stored_benchmarks(db, version: int = BENCH_VERSION) -> dict:
     """Benchmarks already saved in the database (never computes anything)."""
     stored = {}
     for ev in db.get_audit_events(BENCH_EVENT, limit=200):
         p = ev.payload or {}
-        if p.get("version") == BENCH_VERSION and p.get("rule_id") not in stored:
+        if p.get("version") == version and p.get("rule_id") not in stored:
             stored[p["rule_id"]] = p
     return stored
 

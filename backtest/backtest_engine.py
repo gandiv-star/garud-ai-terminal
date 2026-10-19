@@ -40,6 +40,39 @@ class ChargeModel:
         return brokerage + stt + exchange + sebi + gst
 
 
+@dataclass(frozen=True)
+class FillModel:
+    """Fill assumptions v2 — pre-registered 18 Oct 2026, BEFORE any result was seen.
+
+    The legacy engine (fill_model=None) fills a stop exactly at the stop price even when the
+    day opens below it (a gap-down), and uses no slippage by default — both optimistic.
+    v2:
+      * stop hit  -> exit at min(stop, that day's open), i.e. a gap-down fills at the open
+                     (the price actually available), then stop_slippage_pct worse
+      * entry     -> next day's open, entry_slippage_pct worse (pay more)
+      * time exit -> that day's close, exit_slippage_pct worse (receive less)
+    Defaults suit liquid NIFTY 50 delivery orders: 0.05% per normal fill, 0.10% on stops
+    (stops are hit in falling markets, where spreads widen). Charges are unchanged."""
+    name: str = "gap_aware_v2"
+    entry_slippage_pct: float = 0.05
+    exit_slippage_pct: float = 0.05
+    stop_slippage_pct: float = 0.10
+
+    def entry_price(self, bar_open: float) -> float:
+        return bar_open * (1 + self.entry_slippage_pct / 100)
+
+    def stop_exit_price(self, bar_open: float, stop_price: float) -> float:
+        return min(stop_price, bar_open) * (1 - self.stop_slippage_pct / 100)
+
+    def time_exit_price(self, bar_close: float) -> float:
+        return bar_close * (1 - self.exit_slippage_pct / 100)
+
+    def describe(self) -> dict:
+        return {"name": self.name, "entry_slippage_pct": self.entry_slippage_pct,
+                "exit_slippage_pct": self.exit_slippage_pct, "stop_slippage_pct": self.stop_slippage_pct,
+                "stop_fill": "min(stop, open) — gap-down fills at the open"}
+
+
 @dataclass
 class TradeRecord:
     entry_date: datetime
@@ -53,6 +86,7 @@ class TradeRecord:
     exit_reason: str
     entry_regime: str = ""
     symbol: str = ""
+    gap_fill: bool = False      # stop exit filled at a gap-down open below the stop (FillModel only)
 
 
 @dataclass
@@ -121,11 +155,21 @@ def _pool_stats(trades: list, per_symbol_net: dict) -> dict:
 
 
 def _regime_at(closes_so_far: list[float]) -> RegimeAssessment:
+    """NIFTY regime from closes up to the bar being judged. supporting_features carries the same
+    index measures as regime.regime_engine (price vs SMA50/SMA200 in %), so strategies that
+    compare a stock with NIFTY (Relative Strength) see the real index position. Until 18 Oct
+    2026 this dict was left empty, so Relative Strength compared every stock with 0."""
     if len(closes_so_far) < 200:
-        return RegimeAssessment(regime=MarketRegime.SIDEWAYS, confidence=0.0, risk_level=RiskLevel.MODERATE)
+        return RegimeAssessment(regime=MarketRegime.SIDEWAYS, confidence=0.0, risk_level=RiskLevel.MODERATE,
+                                supporting_features={"bars_available": float(len(closes_so_far))})
     price = closes_so_far[-1]
     sma50 = sum(closes_so_far[-50:]) / 50
     sma200 = sum(closes_so_far[-200:]) / 200
+    features = {
+        "price": round(price, 4), "sma50": round(sma50, 4), "sma200": round(sma200, 4),
+        "price_vs_sma50_pct": round((price - sma50) / sma50 * 100, 4) if sma50 else 0.0,
+        "price_vs_sma200_pct": round((price - sma200) / sma200 * 100, 4) if sma200 else 0.0,
+    }
     above_50, above_200 = price > sma50, price > sma200
     sma50_above_200 = sma50 > sma200
     if above_50 and above_200 and sma50_above_200:
@@ -138,7 +182,8 @@ def _regime_at(closes_so_far: list[float]) -> RegimeAssessment:
         regime = MarketRegime.WEAK_BEAR
     else:
         regime = MarketRegime.SIDEWAYS
-    return RegimeAssessment(regime=regime, confidence=0.5, risk_level=RiskLevel.MODERATE)
+    return RegimeAssessment(regime=regime, confidence=0.5, risk_level=RiskLevel.MODERATE,
+                            supporting_features=features)
 
 
 class BacktestEngine:
@@ -160,7 +205,10 @@ class BacktestEngine:
         bars: list | None = None,
         features_cache: dict | None = None,
         allowed_regimes: set | None = None,
+        fill_model: FillModel | None = None,
     ) -> BacktestResult:
+        """fill_model=None keeps the legacy fills exactly (stop filled at the stop, optional flat
+        slippage_pct). With a FillModel, slippage_pct is ignored and the model's fills are used."""
         lookback_start = start_date - timedelta(days=400)
         if bars is None:
             bars = YFinanceLoader().get_historical_bars(symbol, lookback_start, end_date)
@@ -213,7 +261,8 @@ class BacktestEngine:
                     signal = strategy.evaluate(symbol, features, regime)
                     if signal.decision == Decision.BUY and i + 1 < len(bars):
                         entry_bar = bars[i + 1]
-                        entry_price = entry_bar.open * (1 + slippage_pct / 100)  # adverse fill: pay more
+                        entry_price = (fill_model.entry_price(entry_bar.open) if fill_model else
+                                       entry_bar.open * (1 + slippage_pct / 100))  # adverse fill: pay more
                         atr_stop_distance = features.atr * stop_atr_multiplier if features.atr else entry_price * 0.03
                         stop_price = entry_price - atr_stop_distance
                         risk_amount = capital * (risk_pct_per_trade / 100)
@@ -231,12 +280,19 @@ class BacktestEngine:
             else:
                 current_bar = bars[i]
                 days_held = i - position["entry_idx"]
-                exit_reason, exit_price = None, None
+                exit_reason, exit_price, gap_fill = None, None, False
 
                 if current_bar.low <= position["stop_price"]:
-                    exit_reason, exit_price = "STOP_LOSS", position["stop_price"] * (1 - slippage_pct / 100)
+                    if fill_model:
+                        exit_price = fill_model.stop_exit_price(current_bar.open, position["stop_price"])
+                        gap_fill = current_bar.open < position["stop_price"]
+                    else:
+                        exit_price = position["stop_price"] * (1 - slippage_pct / 100)
+                    exit_reason = "STOP_LOSS"
                 elif days_held >= max_holding_days:
-                    exit_reason, exit_price = "TIME_BASED", current_bar.close * (1 - slippage_pct / 100)
+                    exit_reason = "TIME_BASED"
+                    exit_price = (fill_model.time_exit_price(current_bar.close) if fill_model else
+                                  current_bar.close * (1 - slippage_pct / 100))
 
                 if exit_reason:
                     buy_turnover = position["entry_price"] * position["quantity"]
@@ -260,6 +316,7 @@ class BacktestEngine:
                             exit_reason=exit_reason,
                             entry_regime=position.get("entry_regime", ""),
                             symbol=symbol,
+                            gap_fill=gap_fill,
                         )
                     )
                     position = None

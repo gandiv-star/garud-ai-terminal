@@ -32,10 +32,22 @@ def send_telegram(text: str) -> None:
         print(f"Telegram send failed: {e}")
 
 
-def summary_text(res: dict) -> str:
+def fill_model_from_env():
+    """FILL_MODEL=gap_aware_v2 (default) or legacy. Returns (FillModel or None, label)."""
+    from backtest.backtest_engine import FillModel
+    name = os.getenv("FILL_MODEL", "gap_aware_v2").strip().lower() or "gap_aware_v2"
+    if name == "legacy":
+        return None, "legacy (stop at stop price, no slippage)"
+    if name != "gap_aware_v2":
+        raise SystemExit(f"Unknown FILL_MODEL '{name}' — use gap_aware_v2 or legacy")
+    return FillModel(), "gap_aware_v2 (gap-down stops at the open + slippage)"
+
+
+def summary_text(res: dict, label: str = "") -> str:
     s, b = res["selection_test"], res["baseline_test"]
     lines = [
-        "🧠 Garud evidence matrix (Regime × Strategy)",
+        f"🧠 Garud evidence matrix v{em.VERSION} (Regime × Strategy)",
+        f"Fills: {label} | Relative Strength vs real NIFTY position (bug fixed 18 Oct)",
         f"Train → test split: {res['split_date']} | train {res['train_trades']} trades, test {res['test_trades']}",
         f"Favoured in train: {res['favoured_cells']} cells | confirmed in test: {res['confirmed_cells']}",
         "",
@@ -61,8 +73,9 @@ def main() -> int:
         if d % 50 == 0 or d == t:
             print(f"{d}/{t} {label}", flush=True)
 
+    fill_model, label = fill_model_from_env()
     trades, split = em.collect(paper_rule.UNIVERSE_NIFTY50, STRATEGY_REGISTRY,
-                               rule_report.BENCHMARK_END, progress=progress)
+                               rule_report.BENCHMARK_END, progress=progress, fill_model=fill_model)
     res = em.analyse(trades, split)
 
     with open("evidence_matrix.csv", "w", newline="") as f:
@@ -71,7 +84,7 @@ def main() -> int:
         for row in res["matrix"]:
             w.writerow(row)
 
-    text = summary_text(res)
+    text = summary_text(res, label)
     print(text)
     send_telegram(text)
 
@@ -83,8 +96,10 @@ def main() -> int:
             db = Database(load_settings())
             db.connect()
             payload = {k: v for k, v in res.items()}
-            payload["version"] = 1
+            payload["version"] = em.VERSION
             payload["registered"] = "2026-10-08"
+            payload["rerun"] = "2026-10-18: Relative Strength NIFTY bug fixed"
+            payload["fill_model"] = fill_model.describe() if fill_model else {"name": "legacy"}
             db.save_audit_event(AuditEvent(timestamp=datetime.now(timezone.utc), event_type="EVIDENCE_MATRIX",
                                            symbol=None, payload=json.loads(json.dumps(payload, default=str))))
             print("Saved to database (EVIDENCE_MATRIX).")

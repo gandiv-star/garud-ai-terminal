@@ -6,6 +6,8 @@ Gates (all required, checked every run):
   * LIVE_START_DATE (YYYY-MM-DD): only paper trades entered on/after this date are traded live
   * kill switch (GARUD_KILL_SWITCH) blocks new BUYs; exits always continue
   * per-order value cap LIVE_MAX_ORDER_VALUE (qty is reduced to fit, never increased)
+  * any live-limit variable that is SET but invalid blocks every new BUY (fail closed);
+    unset/empty variables use the safe defaults
   * portfolio guard (backtest/live_guard.py): total capital, max open positions, max % per
     stock, monthly loss limit (daily limit optional, off by default) — BUYs only; exits never blocked
 
@@ -22,7 +24,8 @@ from datetime import date, datetime, timezone
 
 from backtest import live_guard, paper_rule
 from brokers.base_broker import OrderRequest, OrderSide, OrderStatus
-from brokers.upstox_live import LiveBrokerError, LiveOrdersDisabled, UpstoxLiveBroker, live_orders_allowed, max_order_value
+from brokers.upstox_live import (LiveBrokerError, LiveOrdersDisabled, UpstoxLiveBroker, live_orders_allowed,
+                                 max_order_value)
 from brokers.upstox_sandbox import SandboxAuthError
 from database.models import AuditEvent
 
@@ -80,6 +83,23 @@ def live_quantity(paper_qty: int, price: float) -> int:
     return max(0, min(int(paper_qty), int(max_order_value() // price))) if price > 0 else 0
 
 
+def effective_status() -> dict:
+    """What the live path would do right now — for the PIPELINE_RUN heartbeat and the app.
+    Only switch states and numeric limits; never a token or secret."""
+    ok, why = live_orders_allowed()
+    try:
+        cfg, problems = live_guard.GuardConfig.from_env(), live_guard.config_problems()
+    except Exception as e:
+        cfg, problems = live_guard.GuardConfig(), [f"live limits unreadable: {type(e).__name__}"]
+    rules, start = sorted(live_rules()), live_start_date()
+    if ok and not (rules and start):
+        why = "LIVE_RULES/LIVE_START_DATE not set"
+    return {"orders_allowed": ok, "reason": why, "rules": rules, "start_date": str(start) if start else None,
+            "active": bool(ok and rules and start), "max_order_value": max_order_value(),
+            "guard": cfg.as_dict(), "problems": problems,
+            "set_vars": sorted(n for n in live_guard.LIMITS if os.getenv(n, "").strip())}
+
+
 def live_book(trades: list, entries: dict, exits: dict) -> live_guard.Book:
     """Open live positions (value at paper entry price) and realised live P&L, scaled from
     the paper trade by live qty / paper qty."""
@@ -113,8 +133,12 @@ def execute(db, trades: list, due_exits: list | None = None, allow_entries: bool
     entries, gtts, exits = _events(db, EV_ENTRY), _events(db, EV_GTT), _events(db, EV_EXIT)
     try:
         guard = live_guard.GuardConfig.from_env()
-    except Exception:                      # never let a bad setting stop exits
-        guard = live_guard.GuardConfig()
+        problems = live_guard.config_problems()
+    except Exception as e:                 # never let a bad setting stop exits
+        guard, problems = live_guard.GuardConfig(), [f"live limits unreadable: {type(e).__name__}"]
+    if problems:
+        # Fail closed: a limit that is set but invalid could mean more money at risk than intended.
+        report.notes.append("🛡 New live BUYs blocked until fixed: " + "; ".join(problems))
 
     for t in trades:
         if t.strategy_name not in rules or paper_rule._to_ist_date(t.timestamp) < start:
@@ -123,7 +147,7 @@ def execute(db, trades: list, due_exits: list | None = None, allow_entries: bool
         try:
             # 1. ENTRY
             if tid not in entries and t.exit_price is None and tid not in due:
-                if not allow_entries:
+                if not allow_entries or problems:
                     continue
                 if paper_rule._to_ist_date(t.timestamp) != now.date() or not (
                         paper_rule.MARKET_OPEN_IST <= now.time() < paper_rule.ENTRY_CUTOFF_IST):
