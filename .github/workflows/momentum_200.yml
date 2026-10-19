@@ -1,0 +1,34 @@
+name: Engine 1 — Momentum 200 test (15 years)
+
+# Manual only. Momentum on a NIFTY 200-sized universe, one Rs.1,00,000 account, 15 years.
+# Stores a NEW MOMENTUM_200 result (older results kept) and sends the verdict to Telegram.
+# Places no orders.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run momentum test
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TRADING_MODE: PAPER
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python backtest/run_momentum200.py
+      - name: Save yearly CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: momentum-200
+          path: momentum200_yearly.csv
+          if-no-files-found: ignore
