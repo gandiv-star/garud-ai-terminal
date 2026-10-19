@@ -98,8 +98,17 @@ def mirror(db, trades: list, broker: UpstoxSandboxBroker | None = None, now: dat
             _save(db, EVENT_FAIL, o, {"response": result.raw_response})
             report.failed.append(f"{o['symbol']} {o['side']}: rejected {str(result.raw_response)[:200]}")
 
+    # A time-exit SELL is sent before the close (14:30-15:25) but the paper trade only closes in
+    # the evening run; in between, that SELL is expected, not "unknown".
+    open_ids = {t.internal_order_id for t in trades
+                if t.strategy_name in paper_rule.RULE_IDS and t.exit_price is None}
+    expected_ids = {o["internal_order_id"] for o in expected}
+    pending_exits = [{"internal_order_id": m["internal_order_id"], "side": m.get("side"), "quantity": m.get("quantity")}
+                     for m in mirrored_orders(db)
+                     if m["internal_order_id"].endswith(":EXIT") and m["internal_order_id"] not in expected_ids
+                     and m["internal_order_id"][: -len(":EXIT")] in open_ids]
     recon = ReconciliationEngine().reconcile(
-        [{k: o[k] for k in ("internal_order_id", "side", "quantity")} for o in expected],
+        [{k: o[k] for k in ("internal_order_id", "side", "quantity")} for o in expected] + pending_exits,
         [{"internal_order_id": m["internal_order_id"], "side": m.get("side"), "quantity": m.get("quantity")}
          for m in mirrored_orders(db)],
     )
