@@ -134,4 +134,4 @@ def test_research_card():
     c = gr.portfolio_summary(p)
     assert c["pass"] and "Paper" in c["verdict"] and "✅ PASS" in c["lines"][1][0]
     kinds = [k for k, _, _ in gr.study_cards({"PORTFOLIO_15Y": (None, p)})]
-    assert kinds[:2] == ["MOMENTUM_200", "PORTFOLIO_15Y"]
+    assert kinds.index("PORTFOLIO_15Y") < kinds.index("EVIDENCE_MATRIX")
