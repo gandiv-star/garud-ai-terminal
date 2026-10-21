@@ -1,0 +1,34 @@
+name: After-tax comparison (15 years)
+
+# Manual only. M2, G, NIFTY ETF and FD after tax (income up to Rs.12 lakh, today's rules).
+# Stores a NEW TAX_STUDY result (older results kept) and sends it to Telegram.
+# Places no orders.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tax study
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TRADING_MODE: PAPER
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python backtest/run_tax_study.py
+      - name: Save CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tax-study
+          path: tax_study.csv
+          if-no-files-found: ignore
