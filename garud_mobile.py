@@ -849,12 +849,13 @@ def research_page(settings, key) -> None:
     try:
         from backtest import momentum_paper as mp
         mom = load_momentum(settings, key)
-        for r in gr.momentum_paper_rows(mom["rebals"], mom["navs"], mp.PORTFOLIOS, mp.CAPITAL):
+        for r in gr.momentum_paper_rows(mom["rebals"], mom["navs"], mp.PORTFOLIOS, mp.CAPITALS):
             if not r["started"]:
                 card(f'📦 {r["id"]} · {r["name"]} (paper)',
-                     row("શરૂઆત", f'{mp.START_SIGNAL:%d %b %Y}', "મહિનાના છેલ્લા દિવસે પસંદગી, બીજા દિવસના બંધ ભાવે ખરીદી · ₹1 લાખ paper"))
+                     row("શરૂઆત", f'{mp.START_SIGNAL:%d %b %Y}', "મહિનાના છેલ્લા દિવસે પસંદગી, બીજા દિવસના બંધ ભાવે ખરીદી · "
+                         f'₹{mp.capital_of(r["id"]):,.0f} paper'))
                 continue
-            body = (row("કિંમત", _money(r["value"], sign=False), f'{r["date"]} · શરૂઆત ₹1,00,000', _col(r["ret"]))
+            body = (row("કિંમત", _money(r["value"], sign=False), f'{r["date"]} · શરૂઆત ₹{r["capital"]:,.0f}', _col(r["ret"]))
                     + row("વળતર", f'{r["ret"]:+.2f}%',
                           f'NIFTY એ જ સમયમાં {r["nifty_ret"]:+.2f}%' if r["nifty_ret"] is not None else "", _col(r["ret"]))
                     + row("સૌથી મોટો ઘટાડો", f'{r["max_dd"]:.1f}%', f'{r["rebalances"]} rebalance · છેલ્લું {r["last_fill"]}')

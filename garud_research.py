@@ -76,7 +76,7 @@ def intraday_summary(p: dict) -> dict:
             "period": f'{p.get("first_date", "—")} → {p.get("last_date", "—")}'}
 
 
-def momentum_paper_rows(rebals: list, navs: list, names: dict, capital: float = 100000.0) -> list:
+def momentum_paper_rows(rebals: list, navs: list, names: dict, capital=100000.0) -> list:
     """Forward paper portfolios. rebals/navs: event payloads (any order). One dict per portfolio."""
     base = [p for p in navs if p.get("nifty")]
     base_nifty = min(base, key=lambda p: p["date"])["nifty"] if base else None
@@ -87,13 +87,14 @@ def momentum_paper_rows(rebals: list, navs: list, names: dict, capital: float = 
         if not mine:
             out.append({"id": pid, "name": name, "started": False})
             continue
+        cap = float(capital.get(pid, 100000.0) if isinstance(capital, dict) else capital)
         last, latest = mine[-1], (nv[-1] if nv else {"value": mine[-1]["value"], "date": mine[-1]["fill_date"]})
-        peak, dd = capital, 0.0
+        peak, dd = cap, 0.0
         for p in nv:
             peak = max(peak, p["value"])
             dd = max(dd, (peak - p["value"]) / peak * 100)
         out.append({"id": pid, "name": name, "started": True, "value": latest["value"], "date": latest["date"],
-                    "ret": round((latest["value"] / capital - 1) * 100, 2),
+                    "ret": round((latest["value"] / cap - 1) * 100, 2), "capital": cap,
                     "nifty_ret": (round((latest["nifty"] / base_nifty - 1) * 100, 2)
                                   if latest.get("nifty") and base_nifty else None),
                     "max_dd": round(dd, 2), "rebalances": len(mine), "last_fill": last.get("fill_date"),
