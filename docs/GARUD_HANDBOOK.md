@@ -76,9 +76,22 @@ Backtest ના આંકડા (યાદ રાખવા): M2 — 24.6%/વર
 
 ---
 
-## 7. આગળનો roadmap (જ્યારે ફરી કામ શરૂ થાય)
+## 7. અત્યાર સુધી શું ચકાસાયું (ફરી ન કરવું)
 
-1. Engine 2 — swing 2.0: મજબૂત momentum શેરમાં ઘટાડે ખરીદી (અનુભવી trader ની રીત) — 15 વર્ષ portfolio test.
-2. AI allocator — mode પ્રમાણે engines વચ્ચે પૈસાની વહેંચણી (Momentum / Swing / Options / Liquid).
-3. Momentum M2 માટે સાચું (point-in-time) NIFTY 200 લિસ્ટ — backtest નો પૂર્વગ્રહ દૂર કરવા.
-4. Live માટે: static IP સર્વર, Upstox live token, compliance checklist (`docs/COMPLIANCE.md`).
+| શું | પરિણામ (15 વર્ષ, ખર્ચ સહિત) | શીખ |
+|---|---|---|
+| Intraday (60-min) | ❌ ખર્ચ ~₹180/trade નફો ખાઈ જાય | |
+| Swing v1/v2/v3 (એક ખાતામાં) | ❌ v3: 4.4%/વર્ષ, ઘટાડો 35% | |
+| Regime પ્રમાણે strategy પસંદગી | ❌ પુરાવો નથી | |
+| **Engine 2 — Swing 2.0** (મજબૂત શેરમાં 5% ઘટાડે ખરીદી, 21 ઓક્ટો) | ❌ NIFTY 50: −1.8% થી +0.9%/વર્ષ, ઘટાડો 35–51% | ~1,500–4,000 ટૂંકા trades: delivery STT (0.1% બંને બાજુ) + slippage નફો ખાઈ જાય. **નબળા બજારના trades દરેક રીતમાં નુકસાનમાં** → "નબળા બજારમાં ખરીદી બંધ" નિયમ સાચો |
+| ✅ Momentum G / M2 + નબળા બજારમાં બહાર | પાસ (વિભાગ 4) | મહિને એક વાર ફેરફાર → ઓછો ખર્ચ |
+
+**મુખ્ય શીખ:** ભારતમાં delivery માં વારંવાર ખરીદ-વેચાણ ખર્ચના કારણે નુકસાન કરે છે. ઓછા trades + મજબૂત શેર + નબળા બજારમાં બહાર = એકમાત્ર પાસ થયેલી રીત.
+
+## 8. આગળનો roadmap (જ્યારે ફરી કામ શરૂ થાય)
+
+1. Momentum M2/G નું paper પરિણામ (ફેબ્રુઆરી 2027) → નાની રકમથી અસલ શરૂઆત (static IP વગર પણ શક્ય: મહિને એક વાર Telegram યાદી પ્રમાણે જાતે orders, ~10 મિનિટ).
+2. Momentum M2 માટે સાચું (point-in-time) NIFTY 200 લિસ્ટ — backtest નો પૂર્વગ્રહ દૂર કરવા.
+3. Tax પછીનું વળતર (short-term 20% / long-term 12.5%) momentum vs NIFTY ETF vs FD.
+4. AI allocator — mode પ્રમાણે Momentum / Options / Liquid વચ્ચે વહેંચણી (options condor ના 30 trades પછી).
+5. Live (આપમેળે orders) માટે: static IP સર્વર, Upstox live token, compliance checklist (`docs/COMPLIANCE.md`).
