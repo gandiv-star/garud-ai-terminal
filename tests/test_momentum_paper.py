@@ -129,3 +129,18 @@ def test_status_and_research_rows():
     rows = gr.momentum_paper_rows(db.of(mp.EV_REBAL), db.of(mp.EV_NAV), mp.PORTFOLIOS)
     assert [r["id"] for r in rows] == ["M2", "G"] and all(r["started"] and r["holdings"] for r in rows)
     assert gr.momentum_paper_rows([], [], mp.PORTFOLIOS)[0]["started"] is False
+
+
+def test_dry_run_saves_nothing_and_reports_ok():
+    sent = []
+    start_before = mp.START_SIGNAL
+    nifty = [x for x in NIFTY if x[0] <= date(2026, 10, 21)]
+
+    def load():
+        return m2.load(nh.CURRENT, date(2026, 10, 20), {}, loader=Loader(),
+                       nifty=[x for x in NIFTY if x[0] <= date(2026, 10, 20)], eval_days=30)
+    code = rmp.dry_run(datetime(2026, 10, 21, 13, 0, tzinfo=IST), sent.append, nifty=nifty, load_fn=load,
+                       closes_fn=_closes)
+    assert code == 0 and "DRY RUN" in sent[0] and "Dry run OK" in sent[0], sent
+    assert "month-end 30 Sep" in sent[0]
+    assert mp.START_SIGNAL == start_before                     # real start date restored
