@@ -793,6 +793,14 @@ def health_page(settings, key) -> None:
                         f'{"✅ AI જવાબ આપે છે" if ok else "❌ AI unavailable"}</div><div class="g-s">{_e(ans[:200])}</div>')
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def load_momentum(_settings, key: str) -> dict:
+    from backtest import momentum_paper as mp
+    db = _db(_settings)
+    return {"rebals": [ev.payload or {} for ev in db.get_audit_events(mp.EV_REBAL, limit=200)],
+            "navs": [ev.payload or {} for ev in db.get_audit_events(mp.EV_NAV, limit=3000)]}
+
+
 @st.cache_data(ttl=900, show_spinner=False)
 def load_studies(_settings, key: str) -> dict:
     import garud_research as gr
@@ -837,6 +845,26 @@ def research_page(settings, key) -> None:
                 f'<div class="g-s">ચલાવ્યું {when:%d %b %Y}' + (f' · {_e(sm.get("period"))}' if sm.get("period") else "") + '</div>')
         body += "".join(row(_e(k), "", _e(v)) for k, v in sm["lines"])
         card(sm["title"], body)
+    # --- monthly momentum paper portfolios
+    try:
+        from backtest import momentum_paper as mp
+        mom = load_momentum(settings, key)
+        for r in gr.momentum_paper_rows(mom["rebals"], mom["navs"], mp.PORTFOLIOS, mp.CAPITAL):
+            if not r["started"]:
+                card(f'📦 {r["id"]} · {r["name"]} (paper)',
+                     row("શરૂઆત", f'{mp.START_SIGNAL:%d %b %Y}', "મહિનાના છેલ્લા દિવસે પસંદગી, બીજા દિવસના બંધ ભાવે ખરીદી · ₹1 લાખ paper"))
+                continue
+            body = (row("કિંમત", _money(r["value"], sign=False), f'{r["date"]} · શરૂઆત ₹1,00,000', _col(r["ret"]))
+                    + row("વળતર", f'{r["ret"]:+.2f}%',
+                          f'NIFTY એ જ સમયમાં {r["nifty_ret"]:+.2f}%' if r["nifty_ret"] is not None else "", _col(r["ret"]))
+                    + row("સૌથી મોટો ઘટાડો", f'{r["max_dd"]:.1f}%', f'{r["rebalances"]} rebalance · છેલ્લું {r["last_fill"]}')
+                    + row("હાલ", "Liquid fund" if r["weak"] and not r["holdings"] else f'{len(r["holdings"])} શેર',
+                          f'રોકડ ₹{(r["cash"] or 0):,.0f}' + (" · બજાર નબળું" if r["weak"] else "")))
+            if r["holdings"]:
+                body += f'<div class="g-s" style="margin-top:6px">{_e(", ".join(f"{s} x{q}" for s, q in r["holdings"]))}</div>'
+            card(f'📦 {r["id"]} · {r["name"]} (paper)', body)
+    except Exception as e:
+        card("Momentum paper", f'<div class="g-s">Unavailable: {_e(e)}</div>')
     # --- options forward test
     try:
         from backtest import options_paper as op

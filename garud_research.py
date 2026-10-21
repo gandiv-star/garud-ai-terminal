@@ -76,6 +76,32 @@ def intraday_summary(p: dict) -> dict:
             "period": f'{p.get("first_date", "—")} → {p.get("last_date", "—")}'}
 
 
+def momentum_paper_rows(rebals: list, navs: list, names: dict, capital: float = 100000.0) -> list:
+    """Forward paper portfolios. rebals/navs: event payloads (any order). One dict per portfolio."""
+    base = [p for p in navs if p.get("nifty")]
+    base_nifty = min(base, key=lambda p: p["date"])["nifty"] if base else None
+    out = []
+    for pid, name in names.items():
+        mine = sorted((p for p in rebals if p.get("portfolio") == pid), key=lambda p: p.get("fill_date") or "")
+        nv = sorted((p for p in navs if p.get("portfolio") == pid), key=lambda p: p["date"])
+        if not mine:
+            out.append({"id": pid, "name": name, "started": False})
+            continue
+        last, latest = mine[-1], (nv[-1] if nv else {"value": mine[-1]["value"], "date": mine[-1]["fill_date"]})
+        peak, dd = capital, 0.0
+        for p in nv:
+            peak = max(peak, p["value"])
+            dd = max(dd, (peak - p["value"]) / peak * 100)
+        out.append({"id": pid, "name": name, "started": True, "value": latest["value"], "date": latest["date"],
+                    "ret": round((latest["value"] / capital - 1) * 100, 2),
+                    "nifty_ret": (round((latest["nifty"] / base_nifty - 1) * 100, 2)
+                                  if latest.get("nifty") and base_nifty else None),
+                    "max_dd": round(dd, 2), "rebalances": len(mine), "last_fill": last.get("fill_date"),
+                    "weak": bool(last.get("weak_market")), "cash": last.get("cash"),
+                    "holdings": sorted((last.get("units") or {}).items())})
+    return out
+
+
 def momentum200_summary(p: dict) -> dict:
     c = portfolio_summary(p)
     c["title"] = "Engine 1 — Momentum 200 (15 વર્ષ, ₹1 લાખ)"
