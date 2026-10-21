@@ -3,7 +3,7 @@ database (never typed in). A test that was never run is shown as NOT RUN / NOT T
 from datetime import timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
-STUDIES = ("ML_LAB", "M2_ROBUSTNESS", "SWING2_15Y", "MOMENTUM_200", "PORTFOLIO_15Y", "EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
+STUDIES = ("TAX_STUDY", "ML_LAB", "M2_ROBUSTNESS", "SWING2_15Y", "MOMENTUM_200", "PORTFOLIO_15Y", "EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
 SAME_ASSUMPTIONS = ("Same engine for every strategy: entry at the next day's open, stop 2×ATR, "
                     "1% risk of ₹1,00,000 per trade, real delivery charges (STT, exchange, stamp, GST); "
                     "intraday and options tests use their own real cost models.")
@@ -103,6 +103,20 @@ def momentum_paper_rows(rebals: list, navs: list, names: dict, capital=100000.0)
     return out
 
 
+def tax_study_summary(p: dict) -> dict:
+    rows = p.get("rows") or []
+    lines = [(str(r.get("strategy")),
+              f'tax પહેલાં {r.get("pre_tax_cagr", "—")}% → tax પછી {r.get("after_tax_cagr", "—")}% વર્ષે · '
+              f'કુલ tax ₹{(r.get("tax_paid") or 0):,.0f} · હાથમાં ₹{(r.get("final_after_tax") or 0):,.0f}')
+             for r in rows]
+    lines.append(("ધારણા", "કુલ આવક ₹12 લાખ સુધી: FD/liquid પર tax નહીં · શેર: short 20%, long 12.5% "
+                           "(₹1.25 લાખ ઉપર) · આજના નિયમ બધા વર્ષે · CA પાસે ખાતરી કરો"))
+    win = [r["strategy"] for r in rows[1:] if r.get("beats_fd_after_tax")]
+    return {"title": f'Tax પછીનું વળતર (₹{(p.get("capital") or 0):,.0f}, 15 વર્ષ)', "pass": bool(win),
+            "verdict": ("Tax પછી પણ FD થી વધુ: " + ", ".join(win)) if win else "Tax પછી કોઈ FD થી આગળ નથી",
+            "lines": lines, "period": f'{p.get("start", "—")} → {p.get("end", "—")}'}
+
+
 def ml_lab_summary(p: dict) -> dict:
     rows = p.get("rows") or []
     lines = [(str(r.get("strategy")), f'{(r.get("full") or {}).get("cagr", "—")}% વર્ષે · ઘટાડો '
@@ -165,7 +179,8 @@ def portfolio_summary(p: dict) -> dict:
 
 def study_cards(studies: dict) -> list:
     """[(kind, when or None, summary dict or None)] in a fixed order."""
-    makers = {"ML_LAB": ml_lab_summary,
+    makers = {"TAX_STUDY": tax_study_summary,
+              "ML_LAB": ml_lab_summary,
               "M2_ROBUSTNESS": m2_robustness_summary,
               "SWING2_15Y": swing2_summary,
               "MOMENTUM_200": momentum200_summary,
