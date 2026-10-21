@@ -21,10 +21,10 @@ def _money(v: float) -> str:
     return f"Rs.{v:,.0f}"
 
 
-def decide(data, pid: str, i_sig: int, held: set) -> tuple:
+def decide(data, pid: str, i_sig: int, held: set, weak_switch: bool = True) -> tuple:
     if pid == "M2":
-        return m2.select(data, i_sig, CANDIDATES, held, weak_switch=True)
-    w = m2.g_weights(data.mkt, i_sig, nh.members_on)
+        return m2.select(data, i_sig, CANDIDATES, held, weak_switch=weak_switch)
+    w = m2.g_weights(data.mkt, i_sig, nh.members_on, weak_switch=weak_switch)
     return w, set(w)
 
 
@@ -44,7 +44,8 @@ def closes_for(symbols, day, loader=None) -> dict:
     return out
 
 
-def run(db, now, kill: bool = False, nifty=None, load_fn=None, closes_fn=None) -> dict:
+def run(db, now, kill: bool = False, nifty=None, load_fn=None, closes_fn=None, weak_switch: bool = True) -> dict:
+    """weak_switch=False exists ONLY for the dry-run rehearsal of the buying path."""
     """Returns {'lines': [...], 'activity': bool, 'errors': [...]}. Injectable data for tests."""
     lines, errors, activity = [], [], False
     nifty = nifty if nifty is not None else _nifty_series(now.replace(tzinfo=None) - timedelta(days=60),
@@ -73,11 +74,11 @@ def run(db, now, kill: bool = False, nifty=None, load_fn=None, closes_fn=None) -
                     errors.append(f"{pid}: price history missing for {sig_day}/{fill_day}")
                     break
                 i_sig, i_fill = mdates.index(sig_day), mdates.index(fill_day)
-                want, held = decide(data, pid, i_sig, set(st.get("held") or []))
+                want, held = decide(data, pid, i_sig, set(st.get("held") or []), weak_switch)
                 syms = set(want) | set(st.get("units") or {})
                 prices = {s: data.mkt.price(s, i_fill) for s in syms if data.mkt.price(s, i_fill)}
                 new = mp.rebalance(st, prices, want, fill_day, allow_buys=not kill)
-                weak = not data.mkt.regime_bull(i_sig)
+                weak = weak_switch and not data.mkt.regime_bull(i_sig)
                 new.update({"month": f"{sig_day:%Y-%m}", "held": sorted(held), "signal_date": str(sig_day),
                             "fill_date": str(fill_day), "weak_market": weak, "kill_switch": kill,
                             "nifty": nifty_close.get(fill_day)})
@@ -144,26 +145,33 @@ class MemoryDB:
 
 def dry_run(now, send, **run_kwargs) -> int:
     """Rehearsal on REAL prices: pretends the paper portfolios started at the previous month-end
-    and shows what they would have bought — nothing is written to the database."""
+    and shows what they would have done — nothing is written to the database. Pass 1 follows the
+    real rule; pass 2 ignores the weak-market switch so the buying path is always exercised."""
     original = mp.START_SIGNAL
     mp.START_SIGNAL = now.date().replace(day=1) - timedelta(days=7)   # catches last month's final session
-    db = MemoryDB()
+    lines, ok = [f"🧪 DRY RUN (nothing saved) — momentum paper as if started last month-end · {now:%Y-%m-%d %H:%M} IST"], True
     try:
-        res = run(db, now, **run_kwargs)
-    except Exception as e:
-        res = {"lines": [], "activity": False, "errors": [f"dry run crashed: {type(e).__name__}: {e}"]}
-    lines = [f"🧪 DRY RUN (nothing saved) — momentum paper as if started last month-end · {now:%Y-%m-%d %H:%M} IST"]
-    lines += res["lines"] or ["(no month-end found to rehearse)"]
-    if res["errors"]:
-        lines.append("⚠️ " + "; ".join(res["errors"][:5]))
-    lines += status_lines(db)
-    mp.START_SIGNAL = original
-    lines.append("✅ Dry run OK — the real run will work the same way on 2 Nov." if res["activity"] and not res["errors"]
+        for label, switch in (("1) real rule", True), ("2) buying-path check (weak-market switch ignored)", False)):
+            db = MemoryDB()
+            try:
+                res = run(db, now, weak_switch=switch, **run_kwargs)
+            except Exception as e:
+                res = {"lines": [], "activity": False, "errors": [f"crashed: {type(e).__name__}: {e}"]}
+            lines.append(f"— {label}")
+            lines += res["lines"] or ["(no month-end found to rehearse)"]
+            if res["errors"]:
+                lines.append("⚠️ " + "; ".join(res["errors"][:5]))
+            lines += status_lines(db)
+            bought = any(ev.event_type == mp.EV_REBAL and (ev.payload or {}).get("units") for ev in db.events)
+            ok = ok and res["activity"] and not res["errors"] and (switch or bought)
+    finally:
+        mp.START_SIGNAL = original
+    lines.append("✅ Dry run OK — the real run will work the same way on 2 Nov." if ok
                  else "❌ Dry run found a problem — send this message to Claude.")
     text = "\n".join(lines)
     print(text)
     send(text)
-    return 0 if res["activity"] and not res["errors"] else 1
+    return 0 if ok else 1
 
 
 def main() -> int:

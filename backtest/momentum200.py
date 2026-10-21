@@ -140,9 +140,9 @@ def select(data: Data, i: int, candidates, held: set, weak_switch: bool) -> tupl
     return ({s: 1.0 / TOP_N for s in picks} if picks else {}), set(picks)
 
 
-def g_weights(mkt, i: int, members_fn) -> dict:
+def g_weights(mkt, i: int, members_fn, weak_switch: bool = True) -> dict:
     """G: NIFTY 50 (true list) 12-1 momentum top 10, liquid fund when the market is weak."""
-    if not mkt.regime_bull(i):
+    if weak_switch and not mkt.regime_bull(i):
         return {}
     pool = [s for s in members_fn(mkt.dates[i]) if s in mkt.px and s != lt.ETF]
     scored = sorted(((m, s) for s in pool if (m := mkt.momentum(s, i)) is not None and mkt.price(s, i)),
