@@ -12,7 +12,7 @@ Garud પોતાની મેળે ચાલે છે: GitHub Actions (ક�
 | v1 / v2 / v3 swing paper rules | સોમ–શુક્ર 09:40, 09:55, 11:10, 14:40, 15:05, 17:00 | Telegram, app 📈 Trades |
 | Upstox sandbox orders (paper ની નકલ) | એ જ runs માં | Telegram 🧪 |
 | NIFTY options iron condor (paper) | બુધ–શુક્ર 09:30–11:30 entry, expiry સુધી દેખરેખ | Telegram 🎯, app 🎯 Options |
-| **Momentum paper — M2 અને G** (₹1 લાખ દરેક) | મહિનાના છેલ્લા દિવસના ભાવે પસંદગી, બીજા કામકાજના દિવસે સાંજે ખરીદી; રોજ સાંજે કિંમત | Telegram 📦, app 🔬 સંશોધન |
+| **Momentum paper — M2 (₹3 લાખ, 20 શેર) અને G (₹1 લાખ, 10 શેર)** | મહિનાના છેલ્લા દિવસના ભાવે પસંદગી, બીજા કામકાજના દિવસે સાંજે ખરીદી; રોજ સાંજે કિંમત | Telegram 📦, app 🔬 સંશોધન |
 | Token expiry ચેતવણી | દરેક run | Telegram 🔑 (5 દિવસ પહેલાં) |
 | Tests | દરેક upload પછી | GitHub → Actions → Tests |
 
@@ -49,7 +49,7 @@ Token ન બદલો તો પણ paper trading ચાલુ રહે છે
 |---|---|---|
 | v1 / v2 / v3 swing rules | દરેકના 30 બંધ trades પછી | net > 0, PF ≥ 1.15, backtest થી બહુ નીચે નહીં → PASS. (15 વર્ષના portfolio test માં swing નબળું નીકળ્યું — અસલ પૈસાની અપેક્ષા ઓછી.) |
 | Options condor | 30 condors પછી (circuit breaker −₹15,000) | પહેલાંથી નક્કી શરતો |
-| **Momentum M2 / G** | **ફેબ્રુઆરી 2027** (3 મહિના) | paper નું વર્તન backtest જેવું હોય તો નાની રકમથી અસલ શરૂઆત — નિર્ણય તમારો |
+| **Momentum M2 / G** | **ફેબ્રુઆરી 2027** (3 મહિના) | paper નું વર્તન backtest જેવું હોય તો નાની રકમથી અસલ શરૂઆત — નિર્ણય તમારો. M2 ને 20 શેર માટે ઓછામાં ઓછા ~₹3 લાખ જોઈએ (₹1 લાખમાં આખા શેરના કારણે ~40% રકમ રોકડ રહી જાય — 21 ઓક્ટો dry run). ઓછી રકમ હોય તો G (10 શેર) વધુ યોગ્ય. |
 
 Backtest ના આંકડા (યાદ રાખવા): M2 — 24.6%/વર્ષ, ઘટાડો 18.5% (આજનું NIFTY 200 લિસ્ટ → વધુ પડતું સારું; NSE ના સાચા Momentum index નો લાંબો ગાળો ~17–18%, છેલ્લા 5 વર્ષ ~9%). G — 11.4%/વર્ષ, ઘટાડો 17%. NIFTY — 11.7%, ઘટાડો 36%. FD — 7%.
 **Tax ગણ્યો નથી** (દર મહિને ફેરફાર → મોટેભાગે short-term tax).
