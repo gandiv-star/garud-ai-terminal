@@ -1,0 +1,34 @@
+name: Database backup (weekly)
+
+# Read-only copy of all trades and audit events, kept as an artifact for 90 days.
+on:
+  schedule:
+    - cron: "30 12 * * 0"   # Sunday 18:00 IST
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Back up database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TRADING_MODE: PAPER
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python backtest/backup_db.py
+      - name: Keep backup file
+        uses: actions/upload-artifact@v4
+        with:
+          name: garud-db-backup
+          path: garud_backup_*.json.gz
+          retention-days: 90
+          if-no-files-found: error
