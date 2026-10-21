@@ -68,6 +68,16 @@ jobs:
           GARUD_KILL_SWITCH: ${{ vars.GARUD_KILL_SWITCH }}
           RUN_SOURCE: ${{ github.event.inputs.source || 'schedule' }}
         run: python backtest/run_options_paper.py
+      - name: Run momentum paper portfolios (monthly, no orders)
+        if: success() || failure()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TRADING_MODE: PAPER
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GARUD_KILL_SWITCH: ${{ vars.GARUD_KILL_SWITCH }}
+          RUN_SOURCE: ${{ github.event.inputs.source || 'schedule' }}
+        run: python backtest/run_momentum_paper.py
       - name: Check token expiry
         if: success() || failure()
         env:
