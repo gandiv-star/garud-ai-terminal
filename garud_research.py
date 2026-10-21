@@ -3,7 +3,7 @@ database (never typed in). A test that was never run is shown as NOT RUN / NOT T
 from datetime import timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
-STUDIES = ("SWING2_15Y", "MOMENTUM_200", "PORTFOLIO_15Y", "EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
+STUDIES = ("ML_LAB", "M2_ROBUSTNESS", "SWING2_15Y", "MOMENTUM_200", "PORTFOLIO_15Y", "EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
 SAME_ASSUMPTIONS = ("Same engine for every strategy: entry at the next day's open, stop 2×ATR, "
                     "1% risk of ₹1,00,000 per trade, real delivery charges (STT, exchange, stamp, GST); "
                     "intraday and options tests use their own real cost models.")
@@ -103,6 +103,35 @@ def momentum_paper_rows(rebals: list, navs: list, names: dict, capital=100000.0)
     return out
 
 
+def ml_lab_summary(p: dict) -> dict:
+    rows = p.get("rows") or []
+    lines = [(str(r.get("strategy")), f'{(r.get("full") or {}).get("cagr", "—")}% વર્ષે · ઘટાડો '
+                                     f'{(r.get("full") or {}).get("max_dd", "—")}%') for r in rows]
+    if p.get("top_quintile_hit_rate") is not None:
+        lines.append(("ML ની પસંદગી સરેરાશ શેરથી સારી", f'{p["top_quintile_hit_rate"]}% મહિનામાં'))
+    adopt = bool(p.get("adopt_ml"))
+    return {"title": "AI/ML Lab — ML picker vs M2 નિયમ", "pass": adopt,
+            "verdict": "ML અપનાવવા લાયક" if adopt else "M2 નિયમ જ સારો (ML અપનાવ્યું નથી)",
+            "lines": lines, "period": f'{p.get("start", "—")} → {p.get("end", "—")}'}
+
+
+def m2_robustness_summary(p: dict) -> dict:
+    rows = p.get("rows") or []
+    lines = [(("✅ " if (r.get("verdict") or {}).get("pass") else "❌ ") + str(r.get("strategy")),
+              f'{(r.get("full") or {}).get("cagr", "—")}% વર્ષે · ઘટાડો {(r.get("full") or {}).get("max_dd", "—")}% · '
+              f'Sharpe {r.get("sharpe", "—")}') for r in rows]
+    b = p.get("bootstrap") or {}
+    if b.get("p_below_fd") is not None:
+        lines.append(("Bootstrap", f'FD થી ઓછું આવવાની શક્યતા {b["p_below_fd"]}% · 5મો percentile {b["cagr_p5"]}%'))
+    for x in p.get("benchmarks") or []:
+        if x.get("available"):
+            lines.append((x["name"], f'{x["cagr"]}% વર્ષે vs M2 {x["m2_cagr_same_period"]}% ({x["from"]}→{x["to"]})'))
+    robust = bool(p.get("robust"))
+    return {"title": "M2 મજબૂતી ચકાસણી (6 settings)", "pass": robust,
+            "verdict": f'{"મજબૂત" if robust else "નાજુક"}: {p.get("passed_count", "—")}/6 પાસ',
+            "lines": lines, "period": f'{p.get("start", "—")} → {p.get("end", "—")}'}
+
+
 def swing2_summary(p: dict) -> dict:
     c = portfolio_summary(p)
     c["title"] = "Engine 2 — Swing 2.0 (મજબૂત શેરમાં ઘટાડે ખરીદી, 15 વર્ષ)"
@@ -136,7 +165,9 @@ def portfolio_summary(p: dict) -> dict:
 
 def study_cards(studies: dict) -> list:
     """[(kind, when or None, summary dict or None)] in a fixed order."""
-    makers = {"SWING2_15Y": swing2_summary,
+    makers = {"ML_LAB": ml_lab_summary,
+              "M2_ROBUSTNESS": m2_robustness_summary,
+              "SWING2_15Y": swing2_summary,
               "MOMENTUM_200": momentum200_summary,
               "PORTFOLIO_15Y": portfolio_summary,
               "EVIDENCE_MATRIX": evidence_summary,
