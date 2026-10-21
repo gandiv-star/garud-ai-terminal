@@ -3,11 +3,15 @@
 Started 19-21 Oct 2026 (owner approved): first signal at the 30 Oct 2026 month-end close.
   M2  Momentum 200 + weak-market switch  (backtest/momentum200.py, passed its 15-year check)
   G   NIFTY 50 momentum + weak-market switch (backtest/longterm.py / momentum200.g_weights)
-Each is a separate Rs.1,00,000 paper account. Exactly the backtest's rule: decide on the
+Paper capital: M2 Rs.3,00,000 (20 stocks), G Rs.1,00,000 (10 stocks) — so each slot is about
+Rs.15,000 / Rs.10,000. (21 Oct dry run on real prices: with Rs.1,00,000 and 20 slots of Rs.5,000,
+whole-share rounding and unaffordable shares left ~42% of M2 in cash — not the tested strategy.) Exactly the backtest's rule: decide on the
 month-end close, trade at the NEXT trading day's close, equal weight, 2% no-trade band, real
 delivery charges, idle cash earns the liquid-fund rate (6.5%). One difference, on purpose:
 real trades are in WHOLE shares (the backtest used fractions), so a stock whose price is above
-its slot (e.g. Rs.5,000 of Rs.1,00,000 / 20) cannot be bought and that money stays in cash.
+its slot cannot be bought in full. Rounding rule: first whole shares that fit the slot, then
+leftover cash buys one more share wherever that brings a stock CLOSER to its target (so a share
+priced up to 2x the slot can still be bought; above that it stays in cash).
 
 State lives in the database as events, never edited:
   MOM_PAPER  one per portfolio per rebalance: holdings, cash, trades, value after trading
@@ -22,7 +26,8 @@ from backtest import longterm as lt
 from backtest.backtest_engine import ChargeModel
 
 START_SIGNAL = date(2026, 10, 30)
-CAPITAL = 100000.0
+CAPITALS = {"M2": 300000.0, "G": 100000.0}
+CAPITAL = 100000.0          # default for any other portfolio id
 LIQUID_RATE = lt.LIQUID_RATE
 BAND = lt.NO_TRADE_BAND
 EV_REBAL, EV_NAV = "MOM_PAPER", "MOM_NAV"
@@ -31,9 +36,14 @@ IST = timezone(timedelta(hours=5, minutes=30))
 CLOSE_DONE = time(15, 35)
 
 
+def capital_of(pid: str) -> float:
+    return CAPITALS.get(pid, CAPITAL)
+
+
 def initial_state(pid: str) -> dict:
-    return {"portfolio": pid, "cash": CAPITAL, "units": {}, "last_px": {}, "held": [], "month": None,
-            "as_of": None, "value": CAPITAL}
+    cap = capital_of(pid)
+    return {"portfolio": pid, "cash": cap, "units": {}, "last_px": {}, "held": [], "month": None,
+            "as_of": None, "value": cap, "capital": cap}
 
 
 def latest_state(db, pid: str) -> dict:
@@ -109,16 +119,31 @@ def rebalance(state: dict, prices: dict, want: dict, fill_day: date, allow_buys:
                 buys[s] = diff
         need = sum(buys.values()) * 1.002
         scale = min(1.0, cash / need) if need > 0 else 0.0
+        bought = {}
         for s in sorted(buys):
             p = prices[s]
             qty = int(buys[s] * scale // p)
             while qty > 0 and qty * p + cm.buy_charges(qty * p) > cash:
                 qty -= 1
-            if qty <= 0:
-                continue
-            cash -= qty * p + cm.buy_charges(qty * p)
-            units[s] = units.get(s, 0) + qty
-            trades.append({"side": "BUY", "symbol": s, "qty": qty, "price": round(p, 2)})
+            if qty > 0:
+                cash -= qty * p + cm.buy_charges(qty * p)
+                bought[s] = qty
+        # leftover cash: one more share where it brings the stock closer to its target weight
+        for _ in range(500):
+            best, best_gap = None, 0.0
+            for s in buys:
+                p = prices[s]
+                gap = want[s] * value - (units.get(s, 0) + bought.get(s, 0)) * p
+                if gap > p / 2 and p * 1.003 + cm.buy_charges(p) <= cash and gap > best_gap:
+                    best, best_gap = s, gap
+            if best is None:
+                break
+            p = prices[best]
+            cash -= p + cm.buy_charges(p)       # charges are % of value, so per-share pieces add up
+            bought[best] = bought.get(best, 0) + 1
+        for s in sorted(bought):
+            units[s] = units.get(s, 0) + bought[s]
+            trades.append({"side": "BUY", "symbol": s, "qty": bought[s], "price": round(prices[s], 2)})
     value = cash + sum(q * px(s) for s, q in units.items() if px(s))
     return {**state, "cash": round(cash, 2), "units": units,
             "last_px": {s: round(last_px[s], 2) for s in units if s in last_px},

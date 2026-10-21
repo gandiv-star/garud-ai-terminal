@@ -120,10 +120,11 @@ def status_lines(db) -> list:
         st = mp.latest_state(db, pid)
         navs = [ev.payload for ev in db.get_audit_events(mp.EV_NAV, limit=400) if (ev.payload or {}).get("portfolio") == pid]
         if not st.get("as_of"):
-            out.append(f"📦 {pid} {name}: starts with the {mp.START_SIGNAL:%d %b %Y} month-end (paper Rs.1,00,000)")
+            out.append(f"📦 {pid} {name}: starts with the {mp.START_SIGNAL:%d %b %Y} month-end "
+                       f"(paper {_money(mp.capital_of(pid))})")
             continue
         latest = max(navs, key=lambda p: p["date"]) if navs else {"value": st["value"], "date": st["as_of"], "nifty": None}
-        ret = (latest["value"] / mp.CAPITAL - 1) * 100
+        ret = (latest["value"] / mp.capital_of(pid) - 1) * 100
         nifty_ret = ((latest["nifty"] / base_nifty - 1) * 100) if (latest.get("nifty") and base_nifty) else None
         out.append(f"📦 {pid}: {_money(latest['value'])} ({ret:+.1f}%) on {latest['date']} · {len(st.get('units') or {})} stocks"
                    + (f" · NIFTY {nifty_ret:+.1f}% same period" if nifty_ret is not None else ""))
