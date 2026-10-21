@@ -3,7 +3,7 @@ database (never typed in). A test that was never run is shown as NOT RUN / NOT T
 from datetime import timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
-STUDIES = ("MOMENTUM_200", "PORTFOLIO_15Y", "EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
+STUDIES = ("SWING2_15Y", "MOMENTUM_200", "PORTFOLIO_15Y", "EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
 SAME_ASSUMPTIONS = ("Same engine for every strategy: entry at the next day's open, stop 2×ATR, "
                     "1% risk of ₹1,00,000 per trade, real delivery charges (STT, exchange, stamp, GST); "
                     "intraday and options tests use their own real cost models.")
@@ -103,6 +103,15 @@ def momentum_paper_rows(rebals: list, navs: list, names: dict, capital=100000.0)
     return out
 
 
+def swing2_summary(p: dict) -> dict:
+    c = portfolio_summary(p)
+    c["title"] = "Engine 2 — Swing 2.0 (મજબૂત શેરમાં ઘટાડે ખરીદી, 15 વર્ષ)"
+    c["pass"] = bool(p.get("chosen"))
+    c["verdict"] = ("Paper માટે પસંદ: " + p["chosen"]) if p.get("chosen") else "S50 માં કોઈ પાસ નથી"
+    c["lines"].append(("નોંધ", "S50 = સાચું NIFTY 50 લિસ્ટ (નિર્ણય આના પરથી) · S200 = આજનું લિસ્ટ, માત્ર માહિતી"))
+    return c
+
+
 def momentum200_summary(p: dict) -> dict:
     c = portfolio_summary(p)
     c["title"] = "Engine 1 — Momentum 200 (15 વર્ષ, ₹1 લાખ)"
@@ -127,7 +136,8 @@ def portfolio_summary(p: dict) -> dict:
 
 def study_cards(studies: dict) -> list:
     """[(kind, when or None, summary dict or None)] in a fixed order."""
-    makers = {"MOMENTUM_200": momentum200_summary,
+    makers = {"SWING2_15Y": swing2_summary,
+              "MOMENTUM_200": momentum200_summary,
               "PORTFOLIO_15Y": portfolio_summary,
               "EVIDENCE_MATRIX": evidence_summary,
               "LONGTERM_COMPARISON": lambda p: longterm_summary(p, "લાંબા ગાળાની સરખામણી (5 વર્ષ)", "CFG"),
