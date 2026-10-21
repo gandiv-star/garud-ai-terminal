@@ -34,7 +34,7 @@ def test_rebalance_whole_shares_band_and_sells():
     prices = {"A": 100.0, "B": 250.0, "C": 1000.0, "MRF": 140000.0}
     want = {s: 0.25 for s in prices}
     s1 = mp.rebalance(st, prices, want, NOV2)
-    assert s1["units"]["A"] == 249 and "MRF" not in s1["units"]          # 25,000 slot < one MRF share
+    assert s1["units"]["A"] in (249, 250) and "MRF" not in s1["units"]   # MRF > 2x the 25,000 slot
     assert all(isinstance(q, int) for q in s1["units"].values()) and s1["cash"] >= 0
     assert 99000 < s1["value"] <= mp.CAPITAL
     assert st["units"] == {} and st["cash"] == mp.CAPITAL                # input untouched
@@ -44,6 +44,23 @@ def test_rebalance_whole_shares_band_and_sells():
     assert "C" not in s3["units"] and any(t["side"] == "SELL" and t["symbol"] == "C" for t in s3["trades"])
     s4 = mp.rebalance(s1, prices, {}, date(2026, 12, 1), allow_buys=False)
     assert s4["units"] == {} and all(t["side"] == "SELL" for t in s4["trades"])
+
+
+def test_capital_per_portfolio():
+    assert mp.capital_of("M2") == 300000 and mp.capital_of("G") == 100000
+    assert mp.initial_state("M2")["cash"] == 300000
+
+
+def test_leftover_cash_tops_up_toward_target():
+    st = mp.initial_state("X")                                  # Rs.1,00,000
+    prices = {"A": 2600.0, "B": 30000.0, "C": 60000.0, "D": 100.0}
+    s1 = mp.rebalance(st, prices, {s: 0.25 for s in prices}, NOV2)
+    assert s1["units"]["A"] == 10                                # 25,000 slot: 9 fit, 10th is closer to target
+    assert s1["units"]["B"] == 1                                 # above the slot but under 2x: one share
+    assert "C" not in s1["units"]                                # more than 2x the slot: stays cash
+    assert s1["cash"] >= 0 and s1["value"] <= mp.CAPITAL
+    for s, q in s1["units"].items():
+        assert abs(q * prices[s] - 25000) <= abs((q - 1) * prices[s] - 25000) or q == 1
 
 
 def test_cash_earns_liquid_rate():
@@ -99,7 +116,9 @@ def test_end_to_end_first_rebalance_then_daily_value():
     assert {p["portfolio"] for p in reb} == {"M2", "G"}
     for p in reb:
         assert p["signal_date"] == "2026-10-30" and p["fill_date"] == "2026-11-02" and p["month"] == "2026-10"
-        assert p["units"] and p["cash"] >= 0 and 95000 < p["value"] <= 100000
+        cap = mp.capital_of(p["portfolio"])
+        assert p["units"] and p["cash"] >= 0 and 0.97 * cap < p["value"] <= cap
+        assert p["cash"] < 0.05 * cap                                     # money is actually invested
     m2p = next(p for p in reb if p["portfolio"] == "M2")
     assert len(m2p["units"]) <= m2.TOP_N and {"TRENT", "BEL", "HAL", "INFY"} <= set(m2p["units"])
     assert len(next(p for p in reb if p["portfolio"] == "G")["units"]) <= 10
