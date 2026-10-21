@@ -129,8 +129,47 @@ def status_lines(db) -> list:
     return out
 
 
+class MemoryDB:
+    """In-memory stand-in for the database (dry run: nothing is ever saved)."""
+
+    def __init__(self):
+        self.events = []
+
+    def get_audit_events(self, event_type, limit=100):
+        return [e for e in reversed(self.events) if e.event_type == event_type][:limit]
+
+    def save_audit_event(self, event):
+        self.events.append(event)
+
+
+def dry_run(now, send, **run_kwargs) -> int:
+    """Rehearsal on REAL prices: pretends the paper portfolios started at the previous month-end
+    and shows what they would have bought — nothing is written to the database."""
+    original = mp.START_SIGNAL
+    mp.START_SIGNAL = now.date().replace(day=1) - timedelta(days=7)   # catches last month's final session
+    db = MemoryDB()
+    try:
+        res = run(db, now, **run_kwargs)
+    except Exception as e:
+        res = {"lines": [], "activity": False, "errors": [f"dry run crashed: {type(e).__name__}: {e}"]}
+    lines = [f"🧪 DRY RUN (nothing saved) — momentum paper as if started last month-end · {now:%Y-%m-%d %H:%M} IST"]
+    lines += res["lines"] or ["(no month-end found to rehearse)"]
+    if res["errors"]:
+        lines.append("⚠️ " + "; ".join(res["errors"][:5]))
+    lines += status_lines(db)
+    mp.START_SIGNAL = original
+    lines.append("✅ Dry run OK — the real run will work the same way on 2 Nov." if res["activity"] and not res["errors"]
+                 else "❌ Dry run found a problem — send this message to Claude.")
+    text = "\n".join(lines)
+    print(text)
+    send(text)
+    return 0 if res["activity"] and not res["errors"] else 1
+
+
 def main() -> int:
     from backtest.run_rule_paper import _first_time_today, send_telegram
+    if os.getenv("MOMENTUM_DRY_RUN", "").strip() == "1":
+        return dry_run(datetime.now(mp.IST), send_telegram)
     from config.settings import load_settings
     from database.db import Database
     settings = load_settings()
@@ -152,6 +191,7 @@ def main() -> int:
     friday_evening = now.weekday() == 4 and now.time() >= mp.CLOSE_DONE
     if manual or res["activity"] or friday_evening:
         lines += status_lines(db)
+    mp.START_SIGNAL = original
     text = "\n".join(lines)
     print(text)
     if manual:
