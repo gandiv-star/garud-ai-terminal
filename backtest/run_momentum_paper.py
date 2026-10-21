@@ -220,7 +220,6 @@ def main() -> int:
     friday_evening = now.weekday() == 4 and now.time() >= mp.CLOSE_DONE
     if manual or res["activity"] or friday_evening:
         lines += status_lines(db)
-    mp.START_SIGNAL = original
     text = "\n".join(lines)
     print(text)
     if manual:
