@@ -1,0 +1,27 @@
+name: Momentum paper dry run (real prices, nothing saved)
+
+# Manual rehearsal of the monthly momentum paper portfolios on real market data:
+# pretends they started at last month-end and sends what they would have bought to Telegram.
+# Writes nothing to the database. Places no orders.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Dry run
+        env:
+          MOMENTUM_DRY_RUN: "1"
+          TRADING_MODE: PAPER
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python backtest/run_momentum_paper.py
