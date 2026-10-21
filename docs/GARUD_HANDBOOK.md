@@ -15,6 +15,8 @@ Garud પોતાની મેળે ચાલે છે: GitHub Actions (ક�
 | **Momentum paper — M2 (₹3 લાખ, 20 શેર) અને G (₹1 લાખ, 10 શેર)** | મહિનાના છેલ્લા દિવસના ભાવે પસંદગી, બીજા કામકાજના દિવસે સાંજે ખરીદી; રોજ સાંજે કિંમત | Telegram 📦, app 🔬 સંશોધન |
 | Token expiry ચેતવણી | દરેક run | Telegram 🔑 (5 દિવસ પહેલાં) |
 | Tests | દરેક upload પછી | GitHub → Actions → Tests |
+| Database backup (બધા trades + events) | દર રવિવારે 18:00 | Telegram 💾, Actions → "Database backup (weekly)" → Artifacts (90 દિવસ) |
+| Momentum ચેતવણીઓ | rebalance / રોજ સાંજે | 📦 સંદેશમાં sector હિસ્સો; ખાતું ટોચથી 15% નીચે જાય કે ભાવ 6+ દિવસ જૂના હોય તો ⚠️ (જૂના ભાવ પર rebalance થતું જ નથી) |
 
 **પહેલી momentum ખરીદી: 2 નવેમ્બર 2026 સાંજે** (30 ઓક્ટોના ભાવ પરથી પસંદગી).
 
@@ -71,6 +73,8 @@ Backtest ના આંકડા (યાદ રાખવા): M2 — 24.6%/વર
 2. Garud ના paper records database માં સુરક્ષિત છે; એક-બે run નિષ્ફળ જાય તો પણ momentum અને swing rules પછીના run માં આપમેળે પકડી લે છે.
 3. મદદ માટે કોઈ પણ AI ને આ પુસ્તિકા + `docs/` folder + screenshot આપો. Repo: `gandiv-star/garud-ai-terminal`.
 4. ફેરફાર પછી હંમેશા Actions → Tests લીલું હોવું જોઈએ.
+
+**એક વાર ચલાવવાના અભ્યાસ (Actions → Run workflow, પરિણામ Telegram + 🔬 સંશોધન):** "M2 robustness check" (6 settings, bootstrap, NIFTY 200 અને Momentum 30 ETF સાથે સરખામણી) · "AI/ML Lab" (gradient-boosted trees vs M2 નિયમ, walk-forward).
 
 **Rehearsal:** Actions → "Momentum paper dry run" → Run workflow — અસલ ભાવ પર momentum નો પૂરો અભ્યાસ, કંઈ સાચવતું નથી. ગમે ત્યારે ચકાસી શકાય.
 
