@@ -54,7 +54,7 @@ Token ન બદલો તો પણ paper trading ચાલુ રહે છે
 | **Momentum M2 / G** | **ફેબ્રુઆરી 2027** (3 મહિના) | paper નું વર્તન backtest જેવું હોય તો નાની રકમથી અસલ શરૂઆત — નિર્ણય તમારો. M2 ને 20 શેર માટે ઓછામાં ઓછા ~₹3 લાખ જોઈએ (₹1 લાખમાં આખા શેરના કારણે ~40% રકમ રોકડ રહી જાય — 21 ઓક્ટો dry run). ઓછી રકમ હોય તો G (10 શેર) વધુ યોગ્ય. |
 
 Backtest ના આંકડા (યાદ રાખવા): M2 — 24.6%/વર્ષ, ઘટાડો 18.5% (આજનું NIFTY 200 લિસ્ટ → વધુ પડતું સારું; NSE ના સાચા Momentum index નો લાંબો ગાળો ~17–18%, છેલ્લા 5 વર્ષ ~9%). G — 11.4%/વર્ષ, ઘટાડો 17%. NIFTY — 11.7%, ઘટાડો 36%. FD — 7%.
-**Tax ગણ્યો નથી** (દર મહિને ફેરફાર → મોટેભાગે short-term tax).
+ઉપરના આંકડા **tax પહેલાંના** છે. Tax પછીનો આંકડો: Actions → "After-tax comparison (15 years)" → Run workflow (ધારણા: કુલ આવક ₹12 લાખ સુધી → FD/liquid પર tax નહીં; શેર: short-term 20%, long-term 12.5% ₹1.25 લાખ ઉપર; આજના નિયમ બધા વર્ષે). અંતિમ ખાતરી CA પાસે.
 
 ---
 
@@ -74,7 +74,7 @@ Backtest ના આંકડા (યાદ રાખવા): M2 — 24.6%/વર
 3. મદદ માટે કોઈ પણ AI ને આ પુસ્તિકા + `docs/` folder + screenshot આપો. Repo: `gandiv-star/garud-ai-terminal`.
 4. ફેરફાર પછી હંમેશા Actions → Tests લીલું હોવું જોઈએ.
 
-**એક વાર ચલાવવાના અભ્યાસ (Actions → Run workflow, પરિણામ Telegram + 🔬 સંશોધન):** "M2 robustness check" (6 settings, bootstrap, NIFTY 200 અને Momentum 30 ETF સાથે સરખામણી) · "AI/ML Lab" (gradient-boosted trees vs M2 નિયમ, walk-forward).
+**એક વાર ચલાવવાના અભ્યાસ (Actions → Run workflow, પરિણામ Telegram + 🔬 સંશોધન):** "M2 robustness check" (6 settings, bootstrap, NIFTY 200 અને Momentum 30 ETF સાથે સરખામણી) · "AI/ML Lab" (gradient-boosted trees vs M2 નિયમ, walk-forward) · "After-tax comparison" (M2 / G / NIFTY ETF / FD, tax પછી, ₹3 લાખ).
 
 **Rehearsal:** Actions → "Momentum paper dry run" → Run workflow — અસલ ભાવ પર momentum નો પૂરો અભ્યાસ, કંઈ સાચવતું નથી. ગમે ત્યારે ચકાસી શકાય.
 
@@ -96,6 +96,6 @@ Backtest ના આંકડા (યાદ રાખવા): M2 — 24.6%/વર
 
 1. Momentum M2/G નું paper પરિણામ (ફેબ્રુઆરી 2027) → નાની રકમથી અસલ શરૂઆત (static IP વગર પણ શક્ય: મહિને એક વાર Telegram યાદી પ્રમાણે જાતે orders, ~10 મિનિટ).
 2. Momentum M2 માટે સાચું (point-in-time) NIFTY 200 લિસ્ટ — backtest નો પૂર્વગ્રહ દૂર કરવા.
-3. Tax પછીનું વળતર (short-term 20% / long-term 12.5%) momentum vs NIFTY ETF vs FD.
+3. ✅ Tax પછીનું વળતર — તૈયાર (21 ઓક્ટો). Tax ના નિયમ બદલાય તો `backtest/tax_study.py` માં STCG / LTCG / LTCG_EXEMPT બદલવા.
 4. AI allocator — mode પ્રમાણે Momentum / Options / Liquid વચ્ચે વહેંચણી (options condor ના 30 trades પછી).
 5. Live (આપમેળે orders) માટે: static IP સર્વર, Upstox live token, compliance checklist (`docs/COMPLIANCE.md`).
