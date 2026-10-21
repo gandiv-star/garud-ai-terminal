@@ -129,19 +129,34 @@ def ranking(data: Data, i: int, candidates) -> list:
     return [s for _, s in reversed(scored)]
 
 
+def select(data: Data, i: int, candidates, held: set, weak_switch: bool) -> tuple:
+    """One month-end decision: (target weights, new held set). Shared by the backtest and the
+    forward paper portfolio, so both follow exactly the same rule."""
+    if weak_switch and not data.mkt.regime_bull(i):
+        return {}, set()
+    ranked = ranking(data, i, candidates)
+    keep = [s for s in ranked[:KEEP_RANK] if s in held]
+    picks = keep + [s for s in ranked if s not in keep][: max(0, TOP_N - len(keep))]
+    return ({s: 1.0 / TOP_N for s in picks} if picks else {}), set(picks)
+
+
+def g_weights(mkt, i: int, members_fn) -> dict:
+    """G: NIFTY 50 (true list) 12-1 momentum top 10, liquid fund when the market is weak."""
+    if not mkt.regime_bull(i):
+        return {}
+    pool = [s for s in members_fn(mkt.dates[i]) if s in mkt.px and s != lt.ETF]
+    scored = sorted(((m, s) for s in pool if (m := mkt.momentum(s, i)) is not None and mkt.price(s, i)),
+                    reverse=True)
+    return {s: 1.0 / lt.TOP_N for _, s in scored[: lt.TOP_N]}
+
+
 def momentum_targets(data: Data, candidates_fn, weak_switch: bool):
     held = set()
 
     def target(i):
         nonlocal held
-        if weak_switch and not data.mkt.regime_bull(i):
-            held = set()
-            return {}
-        ranked = ranking(data, i, candidates_fn(data.mkt.dates[i]))
-        keep = [s for s in ranked[:KEEP_RANK] if s in held]
-        picks = keep + [s for s in ranked if s not in keep][: max(0, TOP_N - len(keep))]
-        held = set(picks)
-        return {s: 1.0 / TOP_N for s in picks} if picks else {}
+        w, held = select(data, i, candidates_fn(data.mkt.dates[i]), held, weak_switch)
+        return w
     return target
 
 
@@ -215,12 +230,7 @@ def run(data: Data, eval_start: date, candidates_fn, nifty50_members_fn) -> dict
         rows.append(r)
 
     def g_target(i):
-        if not mkt.regime_bull(i):
-            return {}
-        pool = [s for s in nifty50_members_fn(mkt.dates[i]) if s in mkt.px and s != lt.ETF]
-        scored = sorted(((m, s) for s in pool if (m := mkt.momentum(s, i)) is not None and mkt.price(s, i)),
-                        reverse=True)
-        return {s: 1.0 / lt.TOP_N for _, s in scored[: lt.TOP_N]}
+        return g_weights(mkt, i, nifty50_members_fn)
     g = one("G NIFTY 50 momentum + switch (earlier pass)", g_target, rebal)
     g["verdict"] = verdict(g["full"])
     rows.append(g)
