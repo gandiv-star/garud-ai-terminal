@@ -142,5 +142,18 @@ def test_dry_run_saves_nothing_and_reports_ok():
     code = rmp.dry_run(datetime(2026, 10, 21, 13, 0, tzinfo=IST), sent.append, nifty=nifty, load_fn=load,
                        closes_fn=_closes)
     assert code == 0 and "DRY RUN" in sent[0] and "Dry run OK" in sent[0], sent
-    assert "month-end 30 Sep" in sent[0]
+    assert "month-end 30 Sep" in sent[0] and "buying-path check" in sent[0] and "BUY: —" not in sent[0].split("buying-path")[1]
     assert mp.START_SIGNAL == start_before                     # real start date restored
+
+
+def test_dry_run_weak_market_still_checks_buying():
+    sent = []
+    falling = [(d, 20000 * 0.999 ** i) for i, d in enumerate(DAYS)]
+
+    def load():
+        return m2.load(nh.CURRENT, date(2026, 10, 20), {}, loader=Loader(),
+                       nifty=[x for x in falling if x[0] <= date(2026, 10, 20)], eval_days=30)
+    code = rmp.dry_run(datetime(2026, 10, 21, 13, 0, tzinfo=IST), sent.append,
+                       nifty=[x for x in falling if x[0] <= date(2026, 10, 21)], load_fn=load, closes_fn=_closes)
+    real, check = sent[0].split("buying-path check")
+    assert code == 0 and "liquid fund" in real and "BUY: —" in real and "BUY: —" not in check
