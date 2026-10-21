@@ -176,3 +176,37 @@ def test_dry_run_weak_market_still_checks_buying():
                        nifty=[x for x in falling if x[0] <= date(2026, 10, 21)], load_fn=load, closes_fn=_closes)
     real, check = sent[0].split("buying-path check")
     assert code == 0 and "liquid fund" in real and "BUY: —" in real and "BUY: —" not in check
+
+
+def test_rebalance_message_shows_sector_concentration():
+    db = FakeDB()
+    r = _run(db, datetime(2026, 11, 2, 17, 0, tzinfo=IST))
+    assert any(ln.strip().startswith("sectors:") for ln in r["lines"])
+
+
+def test_stale_data_blocks_rebalance():
+    db = FakeDB()
+    nifty = [x for x in NIFTY if x[0] <= NOV2]
+    r = rmp.run(db, datetime(2026, 11, 12, 17, 0, tzinfo=IST), nifty=nifty, load_fn=_load, closes_fn=_closes)
+    assert not db.of(mp.EV_REBAL) and any("stale" in e for e in r["errors"])
+
+
+def test_drawdown_alert():
+    db = FakeDB()
+    st = {**mp.initial_state("G"), "as_of": "2026-11-02", "units": {"X": 100}, "cash": 0.0,
+          "last_px": {"X": 1000.0}, "value": 100000.0, "month": "2026-10"}
+    db.add(mp.EV_REBAL, st)
+    db.add(mp.EV_NAV, {"portfolio": "G", "date": "2026-11-02", "value": 100000.0, "nifty": 1.0})
+    nifty = [x for x in NIFTY if x[0] <= NOV3]
+    r = rmp.run(db, datetime(2026, 11, 3, 17, 0, tzinfo=IST), nifty=nifty, load_fn=_load,
+                closes_fn=lambda syms, day: {"X": 800.0})
+    assert any("G is 20.0% below its peak" in e for e in r["errors"]), r["errors"]
+
+
+def test_sectors_map():
+    from backtest import sectors
+    assert len(sectors.INDUSTRY) == 200 and sectors.industry("TCS") == "Information Technology"
+    assert sectors.industry("UNKNOWN") == "Other"
+    assert sectors.concentration({"TCS": 30, "INFY": 30, "SBIN": 40}) == [("Information Technology", 60.0),
+                                                                        ("Financial Services", 40.0)]
+    assert sectors.concentration({}) == []

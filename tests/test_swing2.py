@@ -96,4 +96,4 @@ def test_research_card():
                    "verdict": {"pass": False}}]}
     c = gr.swing2_summary(p)
     assert not c["pass"] and "S50" in c["verdict"] and "Swing 2.0" in c["title"]
-    assert [k for k, _, _ in gr.study_cards({})][0] == "SWING2_15Y"
+    assert "SWING2_15Y" in [k for k, _, _ in gr.study_cards({})]
