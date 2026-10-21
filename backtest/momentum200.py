@@ -105,7 +105,7 @@ class Data:
         return (p_now / p6 - 1) / vol, (p_now / p12 - 1) / vol
 
 
-def ranking(data: Data, i: int, candidates) -> list:
+def ranking(data: Data, i: int, candidates, top_n: int = TOP_N) -> list:
     """Eligible stocks ranked best first by the NSE-style momentum score."""
     pool = []
     for s in candidates:
@@ -116,7 +116,7 @@ def ranking(data: Data, i: int, candidates) -> list:
             pool.append((data.avg_value(s, i), s, si))
     pool.sort(reverse=True)
     pool = pool[:LIQUID_TOP]
-    if len(pool) < TOP_N:
+    if len(pool) < top_n:
         return [s for _, s, _ in pool]
 
     def z(vals):
@@ -129,15 +129,17 @@ def ranking(data: Data, i: int, candidates) -> list:
     return [s for _, s in reversed(scored)]
 
 
-def select(data: Data, i: int, candidates, held: set, weak_switch: bool) -> tuple:
+def select(data: Data, i: int, candidates, held: set, weak_switch: bool,
+           top_n: int = TOP_N, keep_rank: int = KEEP_RANK) -> tuple:
     """One month-end decision: (target weights, new held set). Shared by the backtest and the
-    forward paper portfolio, so both follow exactly the same rule."""
+    forward paper portfolio, so both follow exactly the same rule. top_n/keep_rank are only
+    changed by the robustness study."""
     if weak_switch and not data.mkt.regime_bull(i):
         return {}, set()
-    ranked = ranking(data, i, candidates)
-    keep = [s for s in ranked[:KEEP_RANK] if s in held]
-    picks = keep + [s for s in ranked if s not in keep][: max(0, TOP_N - len(keep))]
-    return ({s: 1.0 / TOP_N for s in picks} if picks else {}), set(picks)
+    ranked = ranking(data, i, candidates, top_n)
+    keep = [s for s in ranked[:keep_rank] if s in held]
+    picks = keep + [s for s in ranked if s not in keep][: max(0, top_n - len(keep))]
+    return ({s: 1.0 / top_n for s in picks} if picks else {}), set(picks)
 
 
 def g_weights(mkt, i: int, members_fn, weak_switch: bool = True) -> dict:

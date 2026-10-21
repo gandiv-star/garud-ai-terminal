@@ -12,9 +12,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from backtest import momentum200 as m2  # noqa: E402
 from backtest import momentum_paper as mp  # noqa: E402
 from backtest import nifty50_history as nh  # noqa: E402
+from backtest import sectors  # noqa: E402
 from backtest.backtest_engine import _nifty_series  # noqa: E402
 
 CANDIDATES = tuple(dict.fromkeys(m2.NIFTY200_TODAY + nh.all_symbols()))
+STALE_DAYS = 6            # calendar days without a new NIFTY close before rebalancing is refused
+SECTOR_WARN_PCT = 40      # information only: one industry above this share of the holdings
+DRAWDOWN_ALERT_PCT = 15   # Telegram warning when a paper portfolio is this far below its peak
 
 
 def _money(v: float) -> str:
@@ -57,6 +61,10 @@ def run(db, now, kill: bool = False, nifty=None, load_fn=None, closes_fn=None, w
     nifty_close = dict(nifty)
     states = {pid: mp.latest_state(db, pid) for pid in mp.PORTFOLIOS}
     due = {pid: mp.due_month_ends(dates, last, st.get("month")) for pid, st in states.items()}
+    if (now.date() - dates[last]).days > STALE_DAYS:
+        # fail closed: never rebalance on old prices (a long holiday is < 7 days)
+        errors.append(f"NIFTY data looks stale (last close {dates[last]}) — no rebalance until fresh data")
+        due = {pid: [] for pid in due}
     data = None
     if any(due.values()):
         try:
@@ -95,6 +103,10 @@ def run(db, now, kill: bool = False, nifty=None, load_fn=None, closes_fn=None, w
                 lines.append(f"   BUY: {', '.join(buys) or '—'}")
                 lines.append(f"   SELL: {', '.join(sells) or '—'}")
                 lines.append(f"   value {_money(new['value'])} · cash {_money(new['cash'])} · {len(new['units'])} stocks")
+                conc = sectors.concentration({x: q * prices.get(x, 0) for x, q in new["units"].items()})
+                if conc:
+                    lines.append("   sectors: " + " · ".join(f"{k} {v:.0f}%" for k, v in conc[:3])
+                                 + (f" ⚠️ {conc[0][0]} above {SECTOR_WARN_PCT}%" if conc[0][1] > SECTOR_WARN_PCT else ""))
             except Exception as e:
                 errors.append(f"{pid} rebalance failed: {type(e).__name__}: {str(e)[:150]}")
                 break
@@ -106,8 +118,16 @@ def run(db, now, kill: bool = False, nifty=None, load_fn=None, closes_fn=None, w
         try:
             units = st.get("units") or {}
             prices = (closes_fn or closes_for)(list(units), day) if units else {}
-            mp.save(db, mp.EV_NAV, {"portfolio": pid, "date": str(day), "value": mp.mark(st, prices, day),
+            value = mp.mark(st, prices, day)
+            mp.save(db, mp.EV_NAV, {"portfolio": pid, "date": str(day), "value": value,
                                     "nifty": nifty_close.get(day)})
+            values = [(ev.payload or {}).get("value") for ev in db.get_audit_events(mp.EV_NAV, limit=3000)
+                      if (ev.payload or {}).get("portfolio") == pid]
+            peak = max([v for v in values if v] + [mp.capital_of(pid)])
+            dd = (peak - value) / peak * 100 if peak > 0 else 0.0
+            if dd >= DRAWDOWN_ALERT_PCT:
+                errors.append(f"{pid} is {dd:.1f}% below its peak (alert level {DRAWDOWN_ALERT_PCT}%; "
+                              f"backtest worst was ~18-19%) — rules continue unchanged")
         except Exception as e:
             errors.append(f"{pid} daily value failed: {str(e)[:150]}")
     return {"lines": lines, "activity": activity, "errors": errors}
