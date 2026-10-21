@@ -210,3 +210,49 @@ def test_sectors_map():
     assert sectors.concentration({"TCS": 30, "INFY": 30, "SBIN": 40}) == [("Information Technology", 60.0),
                                                                         ("Financial Services", 40.0)]
     assert sectors.concentration({}) == []
+
+
+def _main_with_fakes(monkey_env, now_days, manual=False):
+    """Runs run_momentum_paper.main() end to end with a fake database and fake NIFTY data."""
+    import sys
+    import types
+    from helpers import env
+    fake_db = FakeDB()
+    mod = types.ModuleType("database.db")
+
+    class Database:
+        def __init__(self, settings):
+            pass
+
+        def connect(self):
+            pass
+
+        def __getattr__(self, name):
+            return getattr(fake_db, name)
+    mod.Database = Database
+    saved = sys.modules.get("database.db")
+    sys.modules["database.db"] = mod
+    sent = []
+    try:
+        import backtest.run_rule_paper as rp
+        old_send, old_series = rp.send_telegram, rmp._nifty_series
+        rp.send_telegram = sent.append
+        rmp._nifty_series = lambda a, b: [(d, 25000.0) for d in now_days]
+        with env(DATABASE_URL="postgresql://fake", RUN_SOURCE="manual" if manual else "schedule"):
+            code = rmp.main()
+    finally:
+        rp.send_telegram, rmp._nifty_series = old_send, old_series
+        if saved is not None:
+            sys.modules["database.db"] = saved
+        else:
+            sys.modules.pop("database.db", None)
+    return code, sent
+
+
+def test_main_completes_scheduled_and_manual():
+    """Regression: a stray line in main() crashed every automatic run on 21 Oct 2026."""
+    days = [d for d in DAYS if d <= date(2026, 10, 21)]
+    code, sent = _main_with_fakes(None, days)
+    assert code == 0
+    code, sent = _main_with_fakes(None, days, manual=True)
+    assert code == 0 and sent and "starts with the 30 Oct 2026" in sent[0]
