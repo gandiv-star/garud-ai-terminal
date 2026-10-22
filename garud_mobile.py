@@ -174,6 +174,12 @@ def load_benchmarks(_settings, key: str) -> dict:
     return rule_report.stored_benchmarks(_db(_settings))
 
 
+@st.cache_data(ttl=900, show_spinner=False)
+def load_benchmarks_v3(_settings, key: str) -> dict:
+    from backtest import rule_report
+    return rule_report.stored_benchmarks(_db(_settings), rule_report.BENCH_VERSION_V3)
+
+
 def _rules():
     from backtest import paper_rule
     return paper_rule.RULES
@@ -196,10 +202,15 @@ def unrealised(open_trades: list, prices: dict) -> float:
 def unrealised_net(open_trades: list, prices: dict) -> float:
     """Open P&L after the buy charges already paid and the sell charges an exit would cost,
     on the same basis as closed-trade P&L (paper_rule.net_pnl)."""
-    from backtest.backtest_engine import ChargeModel
-    cm = ChargeModel()
-    return round(sum((prices[t["symbol"]] - t["entry"]) * t["qty"] - cm.buy_charges(t["entry"] * t["qty"])
-                     - cm.sell_charges(prices[t["symbol"]] * t["qty"]) for t in open_trades if t["symbol"] in prices), 2)
+    from backtest.backtest_engine import charges_for
+    total = 0.0
+    for t in open_trades:
+        if t["symbol"] not in prices:
+            continue
+        cm = charges_for(t.get("entry_date"))
+        total += ((prices[t["symbol"]] - t["entry"]) * t["qty"] - cm.buy_charges(t["entry"] * t["qty"])
+                  - cm.sell_charges(prices[t["symbol"]] * t["qty"]))
+    return round(total, 2)
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -867,10 +878,18 @@ def research_page(settings, key) -> None:
         benches = load_benchmarks(settings, key[:9])
     except Exception:
         benches = {}
-    for r in gr.rule_rows(paper_rule.RULES, trades, benches, rule_report.checkpoint_status):
+    try:
+        v3 = load_benchmarks_v3(settings, key[:9])
+    except Exception:
+        v3 = {}
+    for rule_obj, r in zip(paper_rule.RULES, gr.rule_rows(paper_rule.RULES, trades, benches, rule_report.checkpoint_status)):
         b, pp = r["bench"], r["paper"]
         body = row("Backtest (5 વર્ષ)", f'PF {b["pf"]}' if b else "NOT RUN",
                    f'{b["trades"]} trades · avg ₹{b["avg"]} · win {b["win"]}% · {_e(b["period"])}' if b else "benchmark DB માં નથી")
+        c = v3.get(rule_obj.rule_id)
+        body += row("Backtest સાચા ખર્ચે (v3)", f'PF {c.get("pf")}' if c else "NOT RUN",
+                    (f'{c.get("trades")} trades · avg ₹{c.get("mean")} · gap-aware stops + Upstox ₹20/order + DP'
+                     if c else "Actions → \"Rule benchmark v2 + v3\" ચલાવો"), None if c else MUTED)
         body += row("Paper (forward, out-of-sample)", f'{pp["closed"]}/{pp["target"]}',
                     f'net {_money(pp["net"])} · avg {_money(pp["avg"]) if pp["avg"] is not None else "—"} · '
                     f'win {pp["win"] if pp["win"] is not None else "—"}% · PF {pp["pf"] if pp["pf"] is not None else "—"}',
