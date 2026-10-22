@@ -24,6 +24,9 @@ BENCH_EVENT = "RULE_BENCHMARK"
 BENCH_VERSION = 1            # the yardstick the pre-registered checkpoints use (legacy fills) — unchanged
 BENCH_VERSION_V2 = 2         # 18 Oct 2026: same rules, gap-aware stop fills + slippage (FillModel v2);
                              # stored ALONGSIDE v1 for comparison, never replaces it
+BENCH_VERSION_V3 = 3         # 22 Oct 2026 (owner decision A): FillModel v2 + Upstox 2026 delivery charges
+                             # (Rs.20/order + DP). Information next to v1/v2; the pre-registered checkpoints
+                             # keep v1 so the yardstick is never lowered after seeing results
 BENCHMARK_END = date(2026, 9, 26)
 BENCHMARK_DAYS = 1825
 Z_WARN = -2.0
@@ -48,13 +51,13 @@ def _summary(pnls: list) -> dict:
 
 
 def compute_benchmarks(rules, registry: dict, fill_model: FillModel | None = None,
-                       version: int = BENCH_VERSION) -> dict:
+                       version: int = BENCH_VERSION, charge_model: ChargeModel | None = None) -> dict:
     end = datetime.combine(BENCHMARK_END, datetime.min.time()) + timedelta(days=1)
     start = end - timedelta(days=BENCHMARK_DAYS)
     symbols = sorted({s for r in rules for s in r.universe})
     nifty, data, _errors = _load_universe(symbols, start, end)
     caches = {s: {} for s in data}  # features don't depend on the strategy: share them
-    engine = BacktestEngine(ChargeModel())
+    engine = BacktestEngine(charge_model or ChargeModel())
     out = {}
     for rule in rules:
         pnls, skipped, gaps = [], [], 0

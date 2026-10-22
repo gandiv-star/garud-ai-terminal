@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backtest import momentum200 as m2  # noqa: E402
 from backtest import momentum_paper as mp  # noqa: E402
+from backtest.backtest_engine import charges_for  # noqa: E402
 from backtest import nifty50_history as nh  # noqa: E402
 from backtest import sectors  # noqa: E402
 from backtest.backtest_engine import _nifty_series  # noqa: E402
@@ -85,7 +86,7 @@ def run(db, now, kill: bool = False, nifty=None, load_fn=None, closes_fn=None, w
                 want, held = decide(data, pid, i_sig, set(st.get("held") or []), weak_switch)
                 syms = set(want) | set(st.get("units") or {})
                 prices = {s: data.mkt.price(s, i_fill) for s in syms if data.mkt.price(s, i_fill)}
-                new = mp.rebalance(st, prices, want, fill_day, allow_buys=not kill)
+                new = mp.rebalance(st, prices, want, fill_day, allow_buys=not kill, cm=charges_for(fill_day))
                 weak = weak_switch and not data.mkt.regime_bull(i_sig)
                 new.update({"month": f"{sig_day:%Y-%m}", "held": sorted(held), "signal_date": str(sig_day),
                             "fill_date": str(fill_day), "weak_market": weak, "kill_switch": kill,

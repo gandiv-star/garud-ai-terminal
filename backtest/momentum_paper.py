@@ -120,27 +120,31 @@ def rebalance(state: dict, prices: dict, want: dict, fill_day: date, allow_buys:
         need = sum(buys.values()) * 1.002
         scale = min(1.0, cash / need) if need > 0 else 0.0
         bought = {}
+
+        def cost(sym, q):          # one order per symbol: price + charges (flat brokerage counted once)
+            return q * prices[sym] + cm.buy_charges(q * prices[sym]) if q > 0 else 0.0
         for s in sorted(buys):
             p = prices[s]
             qty = int(buys[s] * scale // p)
-            while qty > 0 and qty * p + cm.buy_charges(qty * p) > cash:
+            while qty > 0 and cost(s, qty) > cash:
                 qty -= 1
             if qty > 0:
-                cash -= qty * p + cm.buy_charges(qty * p)
+                cash -= cost(s, qty)
                 bought[s] = qty
         # leftover cash: one more share where it brings the stock closer to its target weight
         for _ in range(500):
             best, best_gap = None, 0.0
             for s in buys:
                 p = prices[s]
-                gap = want[s] * value - (units.get(s, 0) + bought.get(s, 0)) * p
-                if gap > p / 2 and p * 1.003 + cm.buy_charges(p) <= cash and gap > best_gap:
+                b = bought.get(s, 0)
+                gap = want[s] * value - (units.get(s, 0) + b) * p
+                if gap > p / 2 and cost(s, b + 1) - cost(s, b) + p * 0.003 <= cash and gap > best_gap:
                     best, best_gap = s, gap
             if best is None:
                 break
-            p = prices[best]
-            cash -= p + cm.buy_charges(p)       # charges are % of value, so per-share pieces add up
-            bought[best] = bought.get(best, 0) + 1
+            b = bought.get(best, 0)
+            cash -= cost(best, b + 1) - cost(best, b)
+            bought[best] = b + 1
         for s in sorted(bought):
             units[s] = units.get(s, 0) + bought[s]
             trades.append({"side": "BUY", "symbol": s, "qty": bought[s], "price": round(prices[s], 2)})

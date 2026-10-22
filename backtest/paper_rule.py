@@ -19,7 +19,7 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta, timezone
 
-from backtest.backtest_engine import ChargeModel, _nifty_series, _regime_at
+from backtest.backtest_engine import ChargeModel, _nifty_series, _regime_at, charges_for
 from core.constants import Decision
 from data.data_loader import Bar
 from data.yfinance_loader import YFinanceLoader
@@ -187,8 +187,10 @@ def rule_already_used(trades: list, rule_id: str, symbol: str, signal_date) -> s
     return None
 
 
-def net_pnl(entry: float, exit_: float, qty: int) -> float:
-    cm = ChargeModel()
+def net_pnl(entry: float, exit_: float, qty: int, entry_day=None) -> float:
+    """Net of charges. entry_day picks the charge model (backtest_engine.charges_for): positions
+    opened from 23 Oct 2026 pay Upstox's real charges (Rs.20/order + DP); older ones keep the old model."""
+    cm = charges_for(entry_day)
     charges = cm.buy_charges(entry * qty) + cm.sell_charges(exit_ * qty)
     return round((exit_ - entry) * qty - charges, 2)
 
@@ -347,7 +349,7 @@ def process_exits(db, rule: Rule, data: MarketData, trades: list, report: RunRep
         if not rx:
             continue
         reason, price, d = rx
-        pnl = net_pnl(t.entry_price, price, t.quantity)
+        pnl = net_pnl(t.entry_price, price, t.quantity, _to_ist_date(t.timestamp))
         db.update_trade_exit(internal_order_id=t.internal_order_id, exit_price=price,
                              exit_timestamp=_market_close_utc(d), realized_pnl=pnl)
         t.exit_price, t.realized_pnl = price, pnl

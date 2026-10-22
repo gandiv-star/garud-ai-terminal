@@ -1,6 +1,6 @@
 from bisect import bisect_right
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Callable
 
 import yfinance as yf
@@ -46,9 +46,20 @@ def upstox_delivery_2026() -> ChargeModel:
     """Upstox equity-delivery charges as published on upstox.com/brokerage-charges (checked 22 Oct 2026):
     brokerage Rs.20 per executed order, DP Rs.20 + GST per scrip on sell, STT 0.1% both sides,
     NSE transaction 0.00307% (from 1 Mar 2026), stamp duty 0.015% on buy, GST 18%.
-    NOT the default: every existing benchmark, study and paper P&L keeps the old ChargeModel()
-    (brokerage 0, no DP charge) until the owner approves a switch."""
+    Owner approved 22 Oct 2026: used for paper positions OPENED from REAL_COSTS_FROM on
+    (charges_for); everything before keeps the old ChargeModel() and is never re-priced."""
     return ChargeModel(brokerage_flat=20.0, exchange_charges_pct=0.00307, dp_per_sell=20.0)
+
+
+REAL_COSTS_FROM = date(2026, 10, 23)   # first session priced with real broker charges (owner decision A, 22 Oct 2026)
+
+
+def charges_for(entry_day) -> ChargeModel:
+    """Charge model for a paper position by the day it was opened (fills on/after REAL_COSTS_FROM:
+    Upstox 2026 charges; earlier: the old model, so closed and already-open trades keep their basis)."""
+    if entry_day is not None and entry_day >= REAL_COSTS_FROM:
+        return upstox_delivery_2026()
+    return ChargeModel()
 
 
 @dataclass(frozen=True)
