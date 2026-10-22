@@ -47,6 +47,17 @@ jobs:
           except Exception as ex:
               print(f"### Tests: no result file ({ex})")
           PY
+      - name: Known-vulnerability check of dependencies (report only, never fails the run)
+        if: always()
+        continue-on-error: true
+        run: |
+          pip install -q pip-audit
+          {
+            echo "### Dependency vulnerability check (pip-audit)"
+            echo '```'
+            pip-audit -r requirements.txt --progress-spinner off 2>&1 | tail -n 40 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Save test results
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,0 +1,35 @@
+name: Cost re-check (Upstox 2026 charges)
+
+# Manual only. The after-tax comparison again, with Upstox's real 2026 delivery charges
+# (Rs.20/order + DP charge), at Rs.3 lakh and Rs.1 lakh. Changes nothing in paper trading.
+# Stores a NEW COST_RECHECK result (older results kept) and sends it to Telegram.
+# Places no orders.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run cost re-check
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TRADING_MODE: PAPER
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python backtest/run_cost_recheck.py
+      - name: Save CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cost-recheck
+          path: cost_recheck.csv
+          if-no-files-found: ignore
