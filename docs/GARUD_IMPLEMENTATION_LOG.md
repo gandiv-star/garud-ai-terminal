@@ -66,6 +66,15 @@
 
 **After part 4:** 263 tests passed, 0 failed; UI smoke test (all screens incl. Health checklist) passed.
 
+## Session 22 Oct 2026, part 5 (paper replay — first half of the Feb 2027 check, today)
+
+| # | Change | Files | Tests | Result |
+|---|---|---|---|---|
+| 29 | **Paper replay:** the real momentum paper engine (whole shares, paper capital, Upstox charges, next-close fills, weak-market switch) replayed month by month over the last ~2 years and compared with the backtest engine on the same dates and charges. ENGINE OK = gap ≤ 2 pp/yr and idle cash ≤ 10% (registered before running). Event PAPER_REPLAY; research card; manual workflow | `backtest/paper_replay.py`, `backtest/run_paper_replay.py`, `.github/workflows/paper_replay.yml` (new), `garud_research.py` | `tests/test_paper_replay.py` (3) | PASS on synthetic data. Real run: owner runs the workflow |
+| 30 | **Bug fixed (found by the replay):** in `tax_study.simulate_taxed` the 0.2% cash buffer was too small for Upstox's flat ₹20/order, so the last buys of a rebalance were skipped and that money sat in the liquid fund. Percentage-only charges are unaffected (TAX_STUDY results unchanged). **The COST_RECHECK "Upstox" rows of 22 Oct were affected and must be re-run** | `backtest/tax_study.py` | `test_tax_study.py::test_flat_charges_never_leave_a_stock_in_cash` (fails before the fix, passes after) | PASS |
+
+**After part 5:** 267 tests passed, 0 failed.
+
 ## Earlier sessions (for traceability)
 
 - **18 Oct:**

@@ -28,6 +28,7 @@
 | G | 9.74% | 9.10% |
 | NIFTY ETF | 10.95% | 11.11% |
 
+- ⚠️ **These Upstox rows are superseded.** A bug (fixed 22 Oct, part 5) left some money uninvested in the backtest under flat ₹20 charges. Re-run Actions → "Cost re-check (Upstox 2026 charges)" for corrected figures; the old-model rows and TAX_STUDY are unaffected.
 - Swing trades cost about ₹71 more each.
 - Since 23 Oct 2026, new paper positions pay the real charges.
 

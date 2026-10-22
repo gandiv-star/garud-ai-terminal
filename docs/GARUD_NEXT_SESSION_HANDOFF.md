@@ -19,6 +19,7 @@
 3. **Upstox sandbox token:** renew before 29 Oct 2026.
 
 ## Next highest-priority tasks (in order)
+0. The owner should run Actions → "Paper replay (momentum engine, last 2 years)" and then re-run "Cost re-check (Upstox 2026 charges)" (its Upstox rows were affected by the bug fixed on 22 Oct, part 5).
 1. Confirm benchmark v3 was stored (Research tab, "Backtest સાચા ખર્ચે (v3)").
 2. Check Sunday's backup messages: "Restore drill OK" (file check) and "Full restore drill … integrity OK · app: home screen rendered" (full drill). If the full drill fails, read the Actions log of "Database backup (weekly)".
 3. Check the first pip-audit report in the Tests summary; raise caps for vulnerable packages if needed.

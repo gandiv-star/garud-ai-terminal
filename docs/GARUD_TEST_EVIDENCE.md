@@ -17,10 +17,11 @@
 | After audit changes | 223 | 0 |
 | After part 2 (P2 items) | 229 | 0 |
 | After part 3 (real charges) | 233 | 0 |
-| After part 4 (execution safety, charges, restore, readiness) | **263** | **0** |
+| After part 4 (execution safety, charges, restore, readiness) | 263 | 0 |
+| After part 5 (paper replay + backtest fix) | **267** | **0** |
 | UI smoke test, after | 10/10 screens | 0 |
 
-**Per file** (number of test functions; parametrised cases make the total 263):
+**Per file** (number of test functions; parametrised cases make the total 267):
 
 | File | Tests | File | Tests |
 |---|---|---|---|
@@ -33,11 +34,11 @@
 | test_cost_recheck (new) | 4 | test_tools_modules (new) | 4 |
 | test_real_costs (new) | 3 | test_execution_safety (new) | 17 |
 | test_charges (new) | 7 | test_restore_drill (new) | 3 |
-| test_live_readiness (new) | 2 | | |
+| test_live_readiness (new) | 2 | test_paper_replay (new) | 3 |
 | test_live_executor | 11 | test_sandbox_mirror | 4 |
 | test_live_gates | 19 | test_scanner | 1 |
 | test_live_guard | 9 | test_swing2 | 5 |
-| test_m2_robustness | 4 | test_tax_study | 7 |
+| test_m2_robustness | 4 | test_tax_study | 8 |
 | test_macro | 4 | test_trading_mode | 5 |
 | test_ml_lab | 4 (incl. strict no-look-ahead) | test_momentum200 | 7 |
 
