@@ -12,7 +12,7 @@
 | NIFTY ETF buy & hold | 2011-09 → 2026-09 | 11.67% | 10.95% | 36.3% | Benchmark |
 | **M2** Momentum 200 + weak-market switch | same | 24.6% | 21.79% | 18.5% | Backtest PASS. **Biased** (today's NIFTY 200 list). Paper from 2 Nov 2026 |
 | **G** NIFTY 50 momentum (true list) + switch | same | 11.39% | 10.02% | 17.1% | Backtest PASS. Paper from 2 Nov 2026 |
-| Swing v1/v2/v3 (paper rules) | 5-year benchmark | v2 PF 1.04, v3 PF 1.20 (FillModel v2) | — | v3 in one account: 35% | Paper: v2 6/30 closed, PF 0.19. **Not proven** |
+| Swing v1/v2/v3 (paper rules) | 5-year benchmark, 2021-09 → 2026-09 | **v3 benchmark (realistic fills + Upstox charges, 22 Oct):** v1 PF 1.04 (+₹1,378 / 90 trades) · v2 **PF 0.87 (−₹38,646 / 705 trades)** · v3 PF 1.09 (+₹73,844 / 1,198 trades). v1 legacy figures 1.43 / 1.14 / 1.28 | — | v3 in one account: 35% | Paper: v2 6/30 closed, PF 0.19. **Not proven.** Under realistic costs v2 loses money in backtest |
 | Engine 2 swing (dip-buy) | 15 years | −1.8% to +0.9% | — | 35–51% | **FAILED** |
 | Intraday ORB | 2 years | PF 0.67 | — | — | **FAILED** (costs) |
 | ML picker | 10 years out-of-sample | 13.67% | — | 40% | Not adopted (lost to M2 by more than 2 pp) |
