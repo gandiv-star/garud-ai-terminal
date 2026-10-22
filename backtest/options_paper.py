@@ -46,11 +46,27 @@ TARGET_TRADES, PF_MIN = 30, 1.2
 
 
 # ------------------------------------------------------------------ charges
-def leg_charges(premium_value: float, is_sell: bool) -> float:
+# NSE options charges (Upstox fee schedule, checked 22 Oct 2026, upstox.com/brokerage-charges):
+# brokerage Rs.20/order; STT 0.15% of premium on sell and 0.15% on exercised ITM (from 1 Apr 2026;
+# 0.1% / 0.125% before); NSE transaction 0.03553% of premium (from 1 Mar 2026; 0.03503% before);
+# SEBI Rs.10/crore; stamp 0.003% on buy; GST 18% on brokerage + transaction + SEBI.
+# Owner decision A (22 Oct 2026): condors OPENED from REAL_COSTS_FROM use the 2026 rates; older
+# condors keep the rates they were opened with (never re-priced). IPFT (≈Rs.0.50/lakh) is ignored.
+RATES_OLD = {"stt_sell": 0.001, "stt_exercise": 0.00125, "exchange": 0.0003503}
+RATES_2026 = {"stt_sell": 0.0015, "stt_exercise": 0.0015, "exchange": 0.0003553}
+
+
+def rates_for(entry_day) -> dict:
+    from backtest.backtest_engine import REAL_COSTS_FROM
+    return RATES_2026 if entry_day is not None and entry_day >= REAL_COSTS_FROM else RATES_OLD
+
+
+def leg_charges(premium_value: float, is_sell: bool, entry_day=None) -> float:
+    r = rates_for(entry_day)
     brokerage = 20.0
-    exchange = premium_value * 0.0003503
+    exchange = premium_value * r["exchange"]
     sebi = premium_value * 0.000001
-    stt = premium_value * 0.001 if is_sell else 0.0
+    stt = premium_value * r["stt_sell"] if is_sell else 0.0
     stamp = 0.0 if is_sell else premium_value * 0.00003
     return brokerage + exchange + sebi + stt + stamp + (brokerage + exchange + sebi) * 0.18
 
@@ -184,11 +200,11 @@ def net_premium(legs: list, prices: list, opening: bool) -> float:
     return round(sum(-leg["side"] * p for leg, p in zip(legs, prices)), 2)
 
 
-def trade_charges(legs: list, prices: list, lot: int, opening: bool) -> float:
+def trade_charges(legs: list, prices: list, lot: int, opening: bool, entry_day=None) -> float:
     total = 0.0
     for leg, p in zip(legs, prices):
         selling_now = (leg["side"] < 0) == opening
-        total += leg_charges(p * lot, selling_now)
+        total += leg_charges(p * lot, selling_now, entry_day)
     return total
 
 
@@ -197,11 +213,34 @@ def intrinsic(leg: dict, spot: float) -> float:
     return max(spot - k, 0.0) if leg["type"] == "CE" else max(k - spot, 0.0)
 
 
-def settlement(legs: list, spot: float, lot: int) -> tuple[float, float]:
-    """(debit per unit, charges) when held to expiry: shorts pay intrinsic, longs receive it."""
+def settlement(legs: list, spot: float, lot: int, entry_day=None) -> tuple[float, float]:
+    """(debit per unit, charges) when held to expiry: shorts pay intrinsic, longs receive it
+    (STT on the exercised long legs)."""
     debit = sum(-leg["side"] * intrinsic(leg, spot) for leg in legs)
-    charges = sum(intrinsic(leg, spot) * lot * 0.00125 for leg in legs if leg["side"] > 0)
+    rate = rates_for(entry_day)["stt_exercise"]
+    charges = sum(intrinsic(leg, spot) * lot * rate for leg in legs if leg["side"] > 0)
     return round(debit, 2), charges
+
+
+def diagnose(entry: dict, exit_: dict) -> dict:
+    """Why a closed condor made or lost money: per leg, the entry and exit price and the rupee effect
+    (lot-scaled; shorts lose when the price rises, longs gain). Information only."""
+    legs, lot = entry.get("legs") or [], int(entry.get("lot") or 0)
+    prices = exit_.get("exit_prices")
+    rows = []
+    for i, leg in enumerate(legs):
+        px = prices[i] if prices and i < len(prices) else None
+        e = leg.get("entry")
+        # a short leg (side -1) gains (entry - exit) per unit; a long leg (side +1) gains (exit - entry)
+        effect = None if px is None or e is None else round((px - e) * leg["side"] * lot, 2)
+        rows.append({"leg": f'{"SELL" if leg["side"] < 0 else "BUY"} {leg["strike"]:.0f}{leg["type"]}',
+                     "entry": e, "exit": px, "effect": effect})
+    worst = min((r for r in rows if r["effect"] is not None), key=lambda r: r["effect"], default=None)
+    t0, t1 = str(entry.get("time", ""))[:16], str(exit_.get("time", ""))[:16]
+    return {"legs": rows, "credit": entry.get("credit"), "debit": exit_.get("debit"),
+            "same_day": t0[:10] == t1[:10], "opened": t0.replace("T", " "), "closed": t1.replace("T", " "),
+            "worst_leg": worst["leg"] if worst else None, "reason": exit_.get("reason"),
+            "charges": round((entry.get("entry_charges") or 0) + (exit_.get("exit_charges") or 0), 2)}
 
 
 def exit_decision(credit: float, debit: float, now: datetime, expiry: date):
@@ -287,13 +326,14 @@ def run(db, data: UpstoxData | None = None, now: datetime | None = None, allow_e
     for pos in open_pos:
         expiry = date.fromisoformat(pos["expiry"])
         legs, lot, credit = pos["legs"], pos["lot"], pos["credit"]
+        opened = date.fromisoformat(pos["time"][:10])
         try:
             if now.date() > expiry or (now.date() == expiry and now.time() > MARKET_CLOSE):
                 spot = nifty_close_on(expiry)
                 if spot is None:
                     rep.errors.append(f"condor {pos['id']}: NIFTY close for {expiry} not available yet")
                     continue
-                debit, ch = settlement(legs, spot, lot)
+                debit, ch = settlement(legs, spot, lot, opened)
                 reason, prices = "SETTLED", None
             elif market_open:
                 chain = data.chain(expiry)
@@ -305,7 +345,7 @@ def run(db, data: UpstoxData | None = None, now: datetime | None = None, allow_e
                 reason = exit_decision(credit, debit, now, expiry)
                 if not reason:
                     continue
-                ch = trade_charges(legs, prices, lot, opening=False)
+                ch = trade_charges(legs, prices, lot, opening=False, entry_day=opened)
             else:
                 continue
             pnl = round((credit - debit) * lot - pos["entry_charges"] - ch, 2)
@@ -348,7 +388,7 @@ def run(db, data: UpstoxData | None = None, now: datetime | None = None, allow_e
             credit = net_premium(legs, prices, opening=True)
             if credit <= 0:
                 raise _Skip(f"credit {credit} not positive")
-            ch = round(trade_charges(legs, prices, lot, opening=True), 2)
+            ch = round(trade_charges(legs, prices, lot, opening=True, entry_day=now.date()), 2)
             for leg, p in zip(legs, prices):
                 leg["entry"] = p
             spread = max_spread_pct(legs, chain)
