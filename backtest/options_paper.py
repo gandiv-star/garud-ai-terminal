@@ -200,6 +200,11 @@ def exit_decision(credit: float, debit: float, now: datetime, expiry: date):
     return None
 
 
+# The annualised figure is shown only after this many closed condors: from one or two results a
+# yearly rate is meaningless (display only; the verdict at 30 condors is unchanged).
+ANNUAL_MIN_CLOSED = 10
+
+
 def stats(exits: list, first_entry: date | None, today: date) -> dict:
     nets = [e["net_pnl"] for e in exits]
     wins = [x for x in nets if x > 0]
@@ -351,7 +356,8 @@ def run(db, data: UpstoxData | None = None, now: datetime | None = None, allow_e
     rep.lines.append(f"📊 Options condor v1: closed {st['closed']}/{TARGET_TRADES}, open "
                      f"{len([e for e in entries if e['id'] not in closed_ids])}, net Rs.{st['net']}"
                      + (f", PF {st['pf']}" if st["pf"] else "")
-                     + (f", annualised {st['annual_pct']}%" if st["annual_pct"] is not None and st["closed"] else "")
+                     + (f", annualised {st['annual_pct']}%" if st["annual_pct"] is not None
+                        and st["closed"] >= ANNUAL_MIN_CLOSED else "")
                      + (f" | VERDICT {st['verdict']}" if st["verdict"] else ""))
     return rep
 
