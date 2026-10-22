@@ -1,7 +1,8 @@
-name: Rule benchmark v2 (gap-aware fills)
+name: Rule benchmark v2 + v3 (gap-aware fills, real charges)
 
-# Manual only. Stores benchmark v2 next to v1 (v1 is never changed) and sends a
-# v1 vs v2 comparison to Telegram. Places no orders.
+# Manual only. Stores benchmark v2 (gap-aware fills) and v3 (v2 + Upstox real charges) next to v1
+# (v1 is never changed; already stored versions are never recomputed) and sends a v1/v2/v3
+# comparison to Telegram. Places no orders.
 on:
   workflow_dispatch: {}
 
@@ -17,7 +18,7 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Compute and store benchmark v2
+      - name: Compute and store benchmark v2 and v3
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           TRADING_MODE: PAPER
