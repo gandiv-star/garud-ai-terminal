@@ -41,6 +41,7 @@ STANDING_FACTS = {
                             "(the pre-registered yardstick). Benchmark v3 = realistic gap fills + slippage + Upstox charges "
                             "(22 Oct 2026): v1-8 stocks PF 1.04 net +Rs.1,378 (90 trades); v2-NIFTY 50 PF 0.87 net "
                             "-Rs.38,646 (705 trades, loses money); v3-Trend PF 1.09 net +Rs.73,844 (1,198 trades)."),
+    "gap_stops": "Swing paper positions opened from 23 Oct 2026 fill a gap-down stop at the day's open (owner decision B); older ones at the stop price.",
     "tax_assumption": "owner's income up to Rs.12 lakh: FD/liquid fund effectively tax-free; shares STCG 20%, LTCG 12.5% above Rs.1.25L",
 }
 
