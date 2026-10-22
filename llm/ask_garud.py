@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from llm import advisor
 
-PROMPT_VERSION = "ask_v1"
+PROMPT_VERSION = "ask_v2"
 EVENT = "ASK_GARUD"
 MAX_QUESTION_CHARS = 500
 MAX_PER_DAY = 30
@@ -26,7 +26,12 @@ STANDING_FACTS = {
     "pass_bar_long_term": "15-year CAGR > 7% (FD) AND max drawdown <= 25%",
     "pass_bar_swing_rules": "after 30 closed paper trades: net > 0, PF >= 1.15, not far below backtest",
     "momentum_decision": "M2/G paper portfolios start with the 30 Oct 2026 month-end; decision about small real money in Feb 2027, by the owner",
-    "rejected_by_tests": "intraday (costs), frequent swing trading (15-year test failed), regime-based strategy switching, ML stock picker (worse than the M2 rule)",
+    "trading_mode_engine": ("YES, Garud changes which paper rules may open NEW trades according to the NIFTY regime "
+                            "(the daily 'trading mode', see today_mode: e.g. WEAK_BEAR -> v1/v2 volatility-expansion rules allowed, "
+                            "MODERATE_BULL -> v3 trend rule allowed, NO TRADE when nothing fits; the options condor ignores the regime). "
+                            "This switch was fixed in advance; the 8 Oct 2026 evidence matrix found NO proof that choosing rules by "
+                            "regime improves results, so it is kept only as a pre-registered paper experiment."),
+    "rejected_by_tests": "intraday (costs), frequent swing trading (15-year test failed), ML stock picker (worse than the M2 rule)",
     "weak_market_rule": "momentum portfolios move to a liquid fund when NIFTY is weak (validated: weak-market trades lost money in every swing variant)",
     "tax_assumption": "owner's income up to Rs.12 lakh: FD/liquid fund effectively tax-free; shares STCG 20%, LTCG 12.5% above Rs.1.25L",
 }
