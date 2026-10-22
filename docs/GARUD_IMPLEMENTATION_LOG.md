@@ -21,7 +21,7 @@
 
 **After:** 223 tests passed, 0 failed; UI smoke test (10 screens, plus Ask Garud and macro) passed.
 
-**Not changed (needs owner approval):** `GAP_AWARE_STOPS` (ID 14). It would change how future paper exits are priced.
+**Not changed at that point (needed owner approval):** gap-aware paper stops (ID 14). Approved later the same day (decision B, part 3, row 18).
 
 ## Session 22 Oct 2026, part 2 (P2 items; information and safety only, no rule changed)
 
@@ -44,6 +44,9 @@
 | 15 | Momentum rebalance charges **one order per symbol**, so the flat ₹20 brokerage is counted once (not per share in the top-up loop). Results under the old percentage-only model are identical | `backtest/momentum_paper.py` | `tests/test_real_costs.py`, `test_momentum_paper.py` | PASS |
 | 16 | Benchmark **v3** = FillModel v2 + real charges, stored next to v1/v2 by the "Rule benchmark v2 + v3" workflow. Checkpoints keep v1, so the yardstick is never lowered after seeing results | `backtest/rule_report.py`, `backtest/run_benchmark_v2.py`, `.github/workflows/benchmark_v2.yml`, `garud_mobile.py` (research row) | `tests/test_benchmarks.py` +1 | PASS. Owner must run the workflow once |
 | 17 | Home open-P&L estimate uses the entry day's charge model. Ask Garud knows the cost basis and the Cost re-check results (`ask_v3`) | `garud_mobile.py`, `llm/ask_garud.py` | UI smoke test | PASS |
+
+| 18 | **Decision B:** paper stops on a gap-down fill at min(stop, open) for positions opened from 23 Oct 2026 (`GAP_AWARE_FROM`). Older positions keep the stop-price fill; closed trades are never re-priced | `backtest/paper_rule.py` | `tests/test_paper_rule.py::test_gap_down_fill_by_entry_day` | PASS |
+| 19 | Benchmark v3 results recorded (v2 rule PF 0.87 under realistic costs) | `docs/GARUD_QUANT_VALIDATION.md`, `llm/ask_garud.py` | — | — |
 
 **After part 3:** 233 tests passed, 0 failed; UI smoke test passed.
 

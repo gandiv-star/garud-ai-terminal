@@ -22,8 +22,8 @@ Anything that needs the live database or secrets is marked UNVERIFIED or BLOCKED
 
 | દરજ્જો | સંખ્યા |
 |---|---|
-| WORKING_VERIFIED | 55 |
-| PARTIAL | 57 |
+| WORKING_VERIFIED | 56 |
+| PARTIAL | 56 |
 | NOT_IMPLEMENTED | 23 |
 | BLOCKED | 3 |
 | CODE_ONLY | 2 |
@@ -161,7 +161,7 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 | 11 | Monte Carlo Simulation | P → W | P2 | backtest/m2_robustness.py bootstrap() 5,000 resamples (run 21 Oct: 0% below FD); backtest/monte_carlo.py + … |
 | 12 | Portfolio Correlation Heatmap | P | P2 | portfolio/correlation_engine.py used in Tools portfolio pick (max 0.8) / 22 Oct (2): CorrelationEngine math… |
 | 13 | Risk Contribution Analysis | N | P3 | - |
-| 14 | Gap Risk Simulator | P | P1 | backtest/backtest_engine.py FillModel v2 gap-down stop fill min(stop, open)-0.10%; paper GAP_AWARE_STOPS=Fa… |
+| 14 | Gap Risk Simulator | P → W | P1 | backtest/backtest_engine.py FillModel v2 gap-down stop fill min(stop, open)-0.10%; paper: gap-aware from… |
 | 15 | Liquidity and Capacity Model | P | P3 | momentum200: universe = 150 most liquid by 6-month traded value |
 | 16 | Capital Allocation Optimizer | N | P3 | backtest/portfolio15.py compares fixed allocations only |
 | 17 | Drawdown Recovery Monitor | P → W | P2 | garud_risk.drawdown(); run_momentum_paper DRAWDOWN_ALERT_PCT=15 Telegram alert / 22 Oct (2): momentum card … |
@@ -346,5 +346,3 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 | 136 | Resource and Runtime Monitoring | P | P3 | Workflow timeouts; Health run age |
 | 137 | Storage and Log Retention | P | P3 | Artifacts 90 days; audit_events unbounded |
 | 138 | Automated Dependency Compatibility Checks | W | - | requirements upper bounds (test_repo_hygiene) + install in every Tests run |
-| 139 | Backup Recovery Drill | N → P | P1 | NEW: restore_drill() every weekly backup |
-| 140 | Production Readiness Gate | P | P3 | Live gates + handbook section 5 conditions |

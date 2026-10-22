@@ -53,7 +53,7 @@
 | 16 | Performance decay | Checkpoint z-score | — | NSE Momentum index weaker in the last 5 years (about 9%) | — |
 | 17 | Paper vs backtest | Running (6/30) | Running (1/30) | From Nov 2026 | From Nov 2026 |
 | 18 | Liquidity constraints | NIFTY 50 / 8 stocks | Bid/ask required | Top 150 by traded value | NIFTY 50 |
-| 19 | Gap risk / stop limits | Backtest v2 yes; **paper no** (GAP_AWARE_STOPS off, awaiting approval) | Defined risk | No stops (monthly) | Same |
+| 19 | Gap risk / stop limits | Backtest v2/v3 yes; paper yes for positions opened from 23 Oct 2026 (decision B, `paper_rule.GAP_AWARE_FROM`) | Defined risk | No stops (monthly) | Same |
 | 20 | Independent reproduction | Every study re-runnable from Actions; tests on synthetic data | — | M2 base variant reproduced inside the robustness study | — |
 
 ## FD comparison

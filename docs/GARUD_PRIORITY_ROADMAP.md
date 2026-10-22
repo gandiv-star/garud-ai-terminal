@@ -32,7 +32,7 @@ Live trading is OFF, so the execution items below are P3 today. They **become P0
 | 97/130 | Open P&L after charges | **DONE** |
 | 99 | NSE holiday calendar for health checks | **DONE** (2026 list; add 2027 when NSE publishes it) |
 | 2 | Momentum paper test (M2 ₹3L, G ₹1L) | Running automatically. First fill 2 Nov 2026; decision Feb 2027 |
-| 14 | Gap-aware paper stops | **Needs owner approval.** It changes how future paper exits are priced. It is more honest; already-closed trades stay unchanged |
+| 14 | Gap-aware paper stops | **DONE** (decision B, 22 Oct): positions opened from 23 Oct 2026 |
 | 10 | Promotion gate | Stays manual by design: the owner decides after PASS |
 
 ## P2 — Medium (next sessions, in order)

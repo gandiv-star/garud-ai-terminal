@@ -26,7 +26,7 @@
 | Earnings / results filter | A reliable free corporate-events calendar | 35 |
 | Point-in-time NIFTY 200 list | Historical index constituent files (NSE archives) | 2 (bias) |
 | ~~Paper P&L on real broker charges~~ | Done: owner approved decision A on 22 Oct | P0 cost finding (resolved) |
-| Gap-aware paper stops | **Owner approval** | 14 |
+| ~~Gap-aware paper stops~~ | Done: decision B, 22 Oct | 14 |
 
 ## What this audit could not verify (no access from the cloud workspace)
 - Live database contents (stored benchmark PFs, sandbox order counts).

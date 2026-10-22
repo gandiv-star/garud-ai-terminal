@@ -15,7 +15,7 @@
 
 ## Waiting for the owner (decisions, not code)
 1. **Cost model: DONE** (decision A approved 22 Oct; real charges from 23 Oct 2026). The owner should run Actions → "Rule benchmark v2 + v3" once to store benchmark v3.
-2. **Gap-aware paper stops** (`paper_rule.GAP_AWARE_STOPS`): ON or OFF for new trades.
+2. **Gap-aware paper stops: DONE** (decision B approved 22 Oct; `paper_rule.GAP_AWARE_FROM` = 23 Oct 2026).
 3. **Upstox sandbox token:** renew before 29 Oct 2026.
 
 ## Next highest-priority tasks (in order)
