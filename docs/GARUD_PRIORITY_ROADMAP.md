@@ -12,7 +12,14 @@ Being AI/ML does not raise a feature's priority. An "AI feature" that lost to a 
 |---|---|
 | **Cost model understated broker charges** (brokerage ₹0, no DP; real Upstox 2026: ₹20/order + ₹20+GST DP per sell) | **RESOLVED 22 Oct.** Owner approved decision A. Positions opened from 23 Oct 2026 pay real charges; benchmark v3 added; older trades and results unchanged |
 
-Live trading is OFF, so the execution items below are P3 today. They **become P0 on the day live trading is considered**:
+**Done 22 Oct (part 4), tested with a fake broker:**
+- 25 order states, 26 reconciliation, 47/118 cash.
+- 91 exposure limits (already existed).
+- 113 partial fills (bug fixed), 115 unknown state, 117 tick size (bug fixed).
+- 97 charge tests (options rates updated).
+- 54/139 full restore drill, 69 readiness checklist.
+
+Still to do before live:
 
 | ID | Item | Why it becomes P0 |
 |---|---|---|

@@ -64,3 +64,48 @@
 | Tax | Interest is effectively tax-free for slab A (rebate), using today's rules for all years | Short-term gains 20%; long-term gains 12.5% above ₹1.25L |
 | Liquidity | Locked for the term | Can be sold any day, but in a weak market the money sits in a liquid fund |
 | Risk | Capital-safe | Drawdowns of 17–19% in backtests; real drawdowns can be larger |
+
+## Options: why "PF 0.0" and "1/30" (22 Oct 2026)
+
+**Why only 1/30 closed:**
+- The rule opens at most **one condor per weekly expiry**, on Wed–Fri mornings, 4–10 days before expiry.
+- The first condor opened on 21 Oct 2026, so 30 condors take about 7 months, until around May 2027.
+- 1/30 is the expected pace, not a fault.
+
+**Why PF 0.0:**
+- Profit factor = gross profit of winning condors ÷ gross loss of losing condors.
+- The only closed condor (IC-2026-10-27) lost −₹2,874 (STOP_LOSS) and none has won yet, so PF = 0 ÷ 2,874 = 0.
+- That is arithmetically correct and says nothing yet about the rule.
+
+**What the stop means:**
+- The stop fires when the cost to close is ≥ 2× the credit received.
+- The condor was opened and stopped on the same day (21 Oct).
+- From the stored numbers: credit ₹2,395 for the lot, net −₹2,874 after charges, so the closing debit was about 2.1× the credit.
+
+**Cause — two candidates, not yet decided:**
+- (a) A real NIFTY move towards one short strike.
+- (b) Wide bid-ask quotes on the legs. Exits buy back at the ask and sell the wings at the bid, so a wide spread alone can inflate the closing cost.
+
+**How it will be decided:**
+- The Options tab now shows a **"કેમ?" card** for every closed condor: each leg's entry → exit price and its rupee effect.
+- Every new condor records the widest bid-ask spread at entry.
+- If (b) turns out to be the cause, changing the stop to use mid prices would change the registered test. That needs the owner's approval and is **not** done.
+
+## AI ranking / expected return (22 Oct 2026)
+- **M2 (rule) is the benchmark.**
+- The ML picker (`backtest/ml_lab.py`) is a separate, pre-registered experiment:
+  - walk-forward, retrained yearly on past data only;
+  - strict no-look-ahead test;
+  - acceptance = beat M2 by ≥ 2 percentage points CAGR **and** max drawdown ≤ 25% out-of-sample.
+- **Result (21 Oct):** 13.67% / DD 40% vs M2 22.07% / DD 18.5%, so it is **not adopted**.
+- The Tools-tab AI score (`scoring/ai_scoring_engine.py`) only explains signals. No automatic paper or live decision uses it: paper trades store `ai_score=0`.
+
+## Evidence still needed (blockers — no fake data used)
+
+| Item | What is missing |
+|---|---|
+| Swing rule verdicts | 30 closed paper trades per rule (v2 at 6) |
+| Options verdict | 30 condors (around May 2027) |
+| Momentum paper vs backtest | Monthly fills from 2 Nov 2026; decision Feb 2027 |
+| Options backtest | Paid historical option-chain data |
+| Charges vs a real contract note | A real order (live is OFF) |

@@ -112,4 +112,10 @@ Backtest ના આંકડા (યાદ રાખવા): M2 — 24.6%/વર
 
 ## 9. Audit (22 ઓક્ટો 2026)
 
+**દર રવિવારે બે backup સંદેશા આવશે:**
+1. "Restore drill OK": backup file ની ગણતરી સાચી છે.
+2. "Full restore drill … integrity OK · app: home screen rendered": backup ને અલગ test database માં પાછો લાવીને app ચાલુ કરી જોવાઈ (production ને કોઈ અસર નથી).
+
+બીજો સંદેશો ⚠️ સાથે આવે તો Actions → "Database backup (weekly)" નો log જુઓ. Live માટેની ચકાસણી યાદી 🩺 Health tab માં છે (`docs/GARUD_LIVE_READINESS.md`).
+
 140 features ની પુરાવા સાથેની ચકાસણી, પ્રાથમિકતા અને આગળનું કામ: `docs/GARUD_*` files (શરૂઆત `GARUD_MASTER_AUDIT.md` અને `GARUD_NEXT_SESSION_HANDOFF.md` થી). દર વર્ષે ડિસેમ્બરમાં NSE ની નવા વર્ષની રજાઓ `backtest/nse_calendar.py` માં ઉમેરવી.

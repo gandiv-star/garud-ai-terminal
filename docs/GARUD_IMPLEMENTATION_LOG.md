@@ -50,6 +50,22 @@
 
 **After part 3:** 233 tests passed, 0 failed; UI smoke test passed.
 
+## Session 22 Oct 2026, part 4 (owner's second prompt: safety, P&L, recovery, validation)
+
+| # | Items | Change | Files | Tests | Result |
+|---|---|---|---|---|---|
+| 20 | #25 #115 | Order state machine: each live order's state stored once per change; impossible changes reported; status-call failure → UNKNOWN, retried | `execution/order_state.py` (new), `backtest/live_executor.py` | `tests/test_execution_safety.py` | PASS (fake broker) |
+| 21 | #113 | **Bug fixed.** Partly filled then cancelled BUY was treated as "nothing bought" (shares without a stop). Now the stop covers the filled qty; an order still working the next day is cancelled, then protected | same | same | PASS |
+| 22 | #117 | **Bug fixed.** GTT stop triggers were off the NSE tick grid and would be rejected. NSE tick bands (15 Apr 2025), round UP, safe near band edges; quantity validation | `risk/pretrade.py` (new) | same | PASS |
+| 23 | #47 #118 | Cash/margin check: broker funds read once per run, BUY reduced or blocked (fail closed), running cash across BUYs | `risk/pretrade.py`, `brokers/upstox_live.py` (`get_funds`) | same | PASS (fake broker; Upstox endpoint not called live) |
+| 24 | #26 | Position reconciliation after every live run (missing or extra shares reported, never traded) | `execution/position_recon.py` (new) | same | PASS |
+| 25 | #97 | Charge tests from the fee schedule. **Options rates updated** for condors from 23 Oct 2026 (STT 0.15%, NSE 0.03553%, exercise STT 0.15%) | `backtest/options_paper.py` | `tests/test_charges.py` (7) | PASS. Not checked against a contract note |
+| 26 | #54 #139 #60 | **Full restore drill:** backup restored through Garud's own DB code into a throw-away SQLite file (refuses production), integrity checks plus app readers, then the real Streamlit app started headless | `backtest/restore_drill.py` (new), `.github/workflows/backup_db.yml` | `tests/test_restore_drill.py` (3; the SQLAlchemy test runs on GitHub only) | PASS locally; first production drill on Sunday |
+| 27 | #69 #61 #140 | Live-readiness checklist (Health tab) and broker permission audit | `backtest/live_readiness.py` (new), `docs/GARUD_LIVE_READINESS.md` (new), `garud_mobile.py` | `tests/test_live_readiness.py` (2) | PASS |
+| 28 | Options PF/1-30 | Per-condor "કેમ?" diagnosis (leg entry → exit, rupee effect) | `backtest/options_paper.py` (`diagnose`), `garud_mobile.py` | `test_options_paper.py::test_diagnose_closed_condor` | PASS |
+
+**After part 4:** 263 tests passed, 0 failed; UI smoke test (all screens incl. Health checklist) passed.
+
 ## Earlier sessions (for traceability)
 
 - **18 Oct:**

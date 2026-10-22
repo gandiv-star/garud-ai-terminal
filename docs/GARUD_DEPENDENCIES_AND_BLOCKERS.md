@@ -35,3 +35,9 @@
 - pip-audit results.
 
 All of these are marked UNVERIFIED-today in the master audit.
+
+## Added 22 Oct (part 4): evidence that only time or a real account can give
+- **Execution safety:** proven with a fake broker only. The first real proof needs a live account; the safest first step is the manual momentum path.
+- **Charges:** match the published schedule (tests). A real contract note is needed for exact agreement.
+- **Full restore drill:** first run on the next Sunday weekly backup.
+- **Paper verdicts:** see GARUD_QUANT_VALIDATION.md, "Evidence still needed".

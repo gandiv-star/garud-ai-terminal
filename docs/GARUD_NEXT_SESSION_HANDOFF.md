@@ -6,7 +6,7 @@
 
 ## State at hand-off
 - **Live trading:** OFF. Everything is paper or sandbox.
-- **Tests:** 233 pass locally; GitHub "Tests" must be green after every upload.
+- **Tests:** 263 pass locally; GitHub "Tests" must be green after every upload.
 - **Paper tests running:**
   - Swing v1/v2/v3: 30 trades each.
   - Options condor: 30 condors.
@@ -20,7 +20,7 @@
 
 ## Next highest-priority tasks (in order)
 1. Confirm benchmark v3 was stored (Research tab, "Backtest સાચા ખર્ચે (v3)").
-2. Check the first weekly backup with the restore drill (Sunday Telegram: "Restore drill OK").
+2. Check Sunday's backup messages: "Restore drill OK" (file check) and "Full restore drill … integrity OK · app: home screen rendered" (full drill). If the full drill fails, read the Actions log of "Database backup (weekly)".
 3. Check the first pip-audit report in the Tests summary; raise caps for vulnerable packages if needed.
 4. After 3 momentum rebalances (around Feb 2027), add the momentum decay check (inventory ID 8).
 5. Remaining P2 list in `GARUD_PRIORITY_ROADMAP.md`. Done on 22 Oct: Tools tests, drawdown days, bootstrap fall-chance, spread recording, restore steps.

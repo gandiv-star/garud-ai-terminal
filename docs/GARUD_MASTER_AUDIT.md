@@ -22,9 +22,9 @@ Anything that needs the live database or secrets is marked UNVERIFIED or BLOCKED
 
 | દરજ્જો | સંખ્યા |
 |---|---|
-| WORKING_VERIFIED | 56 |
-| PARTIAL | 56 |
-| NOT_IMPLEMENTED | 23 |
+| WORKING_VERIFIED | 65 |
+| PARTIAL | 48 |
+| NOT_IMPLEMENTED | 22 |
 | BLOCKED | 3 |
 | CODE_ONLY | 2 |
 | UNVERIFIED / FAILED | 0 |
@@ -48,7 +48,7 @@ Anything that needs the live database or secrets is marked UNVERIFIED or BLOCKED
 - **ઈરાદાપૂર્વક નથી બનાવ્યા:** trailing SL, partial booking, intraday, basket orders, ML model monitoring.
   - કારણ: 15 વર્ષના tests માં swing અને intraday નિષ્ફળ ગયાં, અને ML એ M2 નિયમ કરતાં ખરાબ પરિણામ આપ્યું.
   - આ features ઉમેરવાથી નફો નહીં વધે; માત્ર જટિલતા વધશે.
-- **Live trading પહેલાં ફરજિયાત (અત્યારે P3, live ના દિવસે P0):** static IP, order state table, emergency flatten, margin check, compliance ફરી ચકાસણી.
+- **Live trading પહેલાંનાં કામ:** order state, partial fill, tick size, cash/margin અને reconciliation 22 ઓક્ટોએ બનાવીને ખોટા (fake) broker સાથે ચકાસ્યાં; એ જ ચકાસણીમાં 2 ભૂલો પકડાઈ અને સુધરી. હજી બાકી: static IP, emergency flatten, compliance ની ફરી ચકાસણી.
 - **નફાકારક જાહેર કરેલી strategy:** એક પણ નહીં.
   - M2 અને G backtest માં tax પછી પણ FD થી આગળ છે, પણ paper test 2 નવેમ્બર 2026 થી શરૂ થશે.
 
@@ -59,7 +59,7 @@ Anything that needs the live database or secrets is marked UNVERIFIED or BLOCKED
 | Commit | 27ae2be (main), clean working tree, in sync with GitHub |
 | Python files | 142 files at baseline (144 after this audit), about 15,000 lines |
 | Tests before this audit | 215 passed, 0 failed (local runner; GitHub "Tests" workflow green per owner) |
-| Tests after this audit | 233 passed, 0 failed, plus the UI smoke test of all 10 screens passed |
+| Tests after this audit | 263 passed, 0 failed, plus the UI smoke test of all 10 screens passed |
 | Workflows | 16. Rule/momentum/options paper (6 cron times plus a cron-job.org dispatch), Tests, weekly backup, one-time studies, dry run |
 | Database | Neon Postgres: tables `trades` and `audit_events`. Last known size 20 trades / 170 events (backup on 19 Oct) |
 | Live trading | OFF. TRADING_MODE=PAPER; no LIVE_* variables set (per handbook and the owner) |
@@ -161,7 +161,7 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 | 11 | Monte Carlo Simulation | P → W | P2 | backtest/m2_robustness.py bootstrap() 5,000 resamples (run 21 Oct: 0% below FD); backtest/monte_carlo.py + … |
 | 12 | Portfolio Correlation Heatmap | P | P2 | portfolio/correlation_engine.py used in Tools portfolio pick (max 0.8) / 22 Oct (2): CorrelationEngine math… |
 | 13 | Risk Contribution Analysis | N | P3 | - |
-| 14 | Gap Risk Simulator | P → W | P1 | backtest/backtest_engine.py FillModel v2 gap-down stop fill min(stop, open)-0.10%; paper: gap-aware from… |
+| 14 | Gap Risk Simulator | P → W | P1 | backtest/backtest_engine.py FillModel v2 gap-down stop fill min(stop, open)-0.10%; paper: gap-aware from 23… |
 | 15 | Liquidity and Capacity Model | P | P3 | momentum200: universe = 150 most liquid by 6-month traded value |
 | 16 | Capital Allocation Optimizer | N | P3 | backtest/portfolio15.py compares fixed allocations only |
 | 17 | Drawdown Recovery Monitor | P → W | P2 | garud_risk.drawdown(); run_momentum_paper DRAWDOWN_ALERT_PCT=15 Telegram alert / 22 Oct (2): momentum card … |
@@ -177,8 +177,8 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 | 22 | Trailing Stop-loss | C | P3 | risk/exit_engine.py ExitEngine (not wired into paper rules, no tests) |
 | 23 | Time-based Exit | W | - | paper_rule.rule_exit() TIME_BASED, time_exit_due_today() |
 | 24 | Failed Breakout Exit | N | P3 | - |
-| 25 | Order State Machine | P | P2 (P0 before live) | brokers/base_broker.py OrderStatus; live_executor handles PENDING/OPEN/PARTIALLY_FILLED/REJECTED; sandbox_m… |
-| 26 | Broker Position Reconciliation | P | P2 (P0 before live) | backtest/sandbox_mirror.py reconcile expected vs mirrored; live_executor.held_quantity(); execution/reconci… |
+| 25 | Order State Machine | P → W | - | brokers/base_broker.py OrderStatus; live_executor handles PENDING/OPEN/PARTIALLY_FILLED/REJECTED; sandbox_m… |
+| 26 | Broker Position Reconciliation | P → W | - | backtest/sandbox_mirror.py reconcile expected vs mirrored; live_executor.held_quantity(); execution/reconci… |
 | 27 | Duplicate Order / Idempotency Protection | W | - | Deterministic internal_order_id (rule-symbol-signal_date) as DB primary key (database/db.py); rule_already_… |
 | 28 | Execution Quality and Slippage Report | P | P2 | FillModel v2 slippage (+0.05% entry, -0.05% exit); ChargeModel. P0 FINDING 22 Oct: ChargeModel assumes brok… |
 | 29 | Safe Retry Logic | P | P2 | llm/advisor.advise() retries transient errors; pipeline re-runs pick up missed work (momentum due_month_end… |
@@ -209,7 +209,7 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 | 44 | Greeks Dashboard | P | P3 | delta read per leg (options_paper._md) |
 | 45 | Expiry-day Risk Controls | W | - | options_paper.exit_decision EXPIRY_CLOSE from 14:30; settlement at intrinsic |
 | 46 | Defined-risk Position Sizing | W | - | Iron condor (always hedged), 1 lot, max loss in entry message; circuit breaker -Rs.15,000 |
-| 47 | Maximum Loss and Margin Validation | P | P3 (P0 before live) | Max loss computed; margin not checked (paper) |
+| 47 | Maximum Loss and Margin Validation | P → W | - | Max loss computed; margin not checked (paper) / 22 Oct (4): risk/pretrade.py available_margin()+affordable_… |
 | 48 | Multi-leg Execution and Partial-fill Protection | B | P3 | Paper only; no live options code |
 | 49 | Expiry / Settlement Risk Checks | W | - | options_paper.settlement(), SETTLED when runs missed |
 | 50 | Realistic Options Backtest | B | P3 | Research card: 'Backtest NOT TESTED (no free historical options data)' |
@@ -233,7 +233,7 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 
 | ID | Feature | Before → After | Priority | Key evidence |
 |---|---|---|---|---|
-| 61 | Broker API Permission Audit | N | P3 (P0 before live) | - |
+| 61 | Broker API Permission Audit | N → P | P3 (P0 before live) | - / 22 Oct (4): docs/GARUD_LIVE_READINESS.md section 1 - every credential and the API calls it is used for … |
 | 62 | SEBI/NSE Retail Algo Compliance Checklist | P | P3 (P0 before live) | docs/COMPLIANCE.md (researched Sep 2026) |
 | 63 | Broker Order-rate and API Controls | B | P3 | Live off; order volume tiny (<10 OPS) |
 | 64 | Live Trading Permission Gates | W | - | brokers/upstox_live.live_orders_allowed(), live_executor gates, live_guard fail-closed limits |
@@ -241,7 +241,7 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 | 66 | Manual Kill Switch | W | - | GARUD_KILL_SWITCH variable -> allow_entries False; safety/kill_switch.py |
 | 67 | Credential Rotation and Access Control | P | P2 | backtest/check_tokens.py expiry warnings 5 days ahead (Telegram, Health) |
 | 68 | Paper/Sandbox/Live Isolation | W | - | Separate brokers (upstox_sandbox vs upstox_live), TRADING_MODE, sandbox mirror never places live orders |
-| 69 | Live-readiness Verification Checklist | P | P3 | docs/COMPLIANCE.md; handbook section 5 (static IP, daily token, PASS) |
+| 69 | Live-readiness Verification Checklist | P → W | - | docs/COMPLIANCE.md; handbook section 5 (static IP, daily token, PASS) / 22 Oct (4): backtest/live_readiness… |
 | 70 | Regulatory and Broker-rule Review Process | N | P3 | - |
 
 ### H. Performance measurement
@@ -278,13 +278,13 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 
 | ID | Feature | Before → After | Priority | Key evidence |
 |---|---|---|---|---|
-| 91 | Dynamic Portfolio Exposure Limits | P | P3 | live_guard LIVE_CAPITAL/LIVE_MAX_OPEN/LIVE_MAX_STOCK_PCT (live only) |
+| 91 | Dynamic Portfolio Exposure Limits | P → W | - | live_guard LIVE_CAPITAL/LIVE_MAX_OPEN/LIVE_MAX_STOCK_PCT (live only) / 22 Oct (4): live exposure limits = b… |
 | 92 | Regime-specific Drawdown Controls | P | P3 | Momentum weak-market switch; options circuit breaker |
 | 93 | Sector and Single-stock Concentration Limits | P | P3 | live_guard max stock %; momentum sector line SECTOR_WARN_PCT=40; Risk tab sector exposure |
 | 94 | Portfolio Stress Scenarios | N | P3 | - |
 | 95 | Trade Journal and Decision Snapshot | W | - | RULE_ENTRY payload (signal date, regime, stop, qty); SCAN_SNAPSHOT daily |
 | 96 | Signal-to-order-to-fill Traceability | P | P2 | internal_order_id -> SANDBOX_ORDER(internal_order_id) -> broker order id |
-| 97 | Realized/Unrealized P&L Reconciliation | P → W | P1 | Closed P&L net of charges (paper_rule.net_pnl). NEW: home shows open P&L after estimated charges (garud_mob… |
+| 97 | Realized/Unrealized P&L Reconciliation | P → W | - | Closed P&L net of charges (paper_rule.net_pnl). NEW: home shows open P&L after estimated charges (garud_mob… |
 | 98 | Corporate Action and Dividend P&L | N | P3 | - |
 | 99 | Market Holiday and Trading Calendar Validation | P → W | P1 | NEW backtest/nse_calendar.py (2026 NSE list, 2 sources); garud_health uses it; options use exchange expiry … |
 | 100 | Daily Trading Summary and Exception Report | W | - | Telegram per run with errors; PIPELINE_RUN heartbeat; Health 'recent data issues' |
@@ -310,12 +310,12 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 |---|---|---|---|---|
 | 111 | Market-open/close State Validation | W | - | paper_rule MARKET_OPEN/ENTRY_CUTOFF/PRE_CLOSE windows; completed_bars() |
 | 112 | Trading Session and Timezone Correctness | W | - | IST everywhere (paper_rule.IST), close at 15:30 IST stored as UTC |
-| 113 | Partial Fill and Cancel/Replace Handling | P | P3 (P0 before live) | live_executor cancels pending BUY on exit; sells only held qty |
+| 113 | Partial Fill and Cancel/Replace Handling | P → W | - | live_executor cancels pending BUY on exit; sells only held qty / 22 Oct (4): BUG FIXED - a BUY partly fille… |
 | 114 | Broker/API Disconnect Detection | P | P2 | SandboxAuthError, SANDBOX_ORDER_FAILED events, Health broker check |
-| 115 | Order Timeout and Unknown-state Recovery | P | P2 | unknown sandbox order reported; live holding check decides |
+| 115 | Order Timeout and Unknown-state Recovery | P → W | - | unknown sandbox order reported; live holding check decides / 22 Oct (4): status call failure -> UNKNOWN sta… |
 | 116 | Stale Signal Expiration | W | - | Entry only same morning (09:15-11:30) on today's open; stock last bar must match NIFTY date |
-| 117 | Order Size / Quantity / Tick-size Validation | P | P3 (before live limit orders) | Whole shares; LIVE_MAX_ORDER_VALUE cap |
-| 118 | Cash, Margin and Position Limit Checks | P | P3 (P0 before live) | live_guard capital/open/stock limits; momentum cash accounting |
+| 117 | Order Size / Quantity / Tick-size Validation | P → W | - | Whole shares; LIVE_MAX_ORDER_VALUE cap / 22 Oct (4): BUG FIXED - GTT stop triggers were not on the NSE tick… |
+| 118 | Cash, Margin and Position Limit Checks | P → W | - | live_guard capital/open/stock limits; momentum cash accounting / 22 Oct (4): cash check per BUY and running… |
 | 119 | Manual Approval Mode | P | P3 | Momentum: Telegram list -> owner places orders manually (planned path) |
 | 120 | Fail-safe Shutdown and Restart Recovery | W | - | State lives in Neon; missed runs caught up (due_month_ends, options settlement, rule exits replay bars) |
 
@@ -346,3 +346,5 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 | 136 | Resource and Runtime Monitoring | P | P3 | Workflow timeouts; Health run age |
 | 137 | Storage and Log Retention | P | P3 | Artifacts 90 days; audit_events unbounded |
 | 138 | Automated Dependency Compatibility Checks | W | - | requirements upper bounds (test_repo_hygiene) + install in every Tests run |
+| 139 | Backup Recovery Drill | N → P | P1 | NEW: restore_drill() every weekly backup / 22 Oct (4): see #54 - full drill with app startup every week |
+| 140 | Production Readiness Gate | P | P3 | Live gates + handbook section 5 conditions / 22 Oct (4): live_readiness checklist (information) + the hard … |
