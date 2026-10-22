@@ -37,18 +37,25 @@ Live trading is OFF, so the execution items below are P3 today. They **become P0
 
 ## P2 — Medium (next sessions, in order)
 
+**Done 22 Oct (part 2):**
+- (11/12/103/132) tests for the Tools modules.
+- (17/72) drawdown days.
+- (20) bootstrap chance of a fall > 25%.
+- (41/42) spread recorded at entry. A spread *filter* needs owner approval.
+- (60) restore steps.
+
+Still open:
+
 1. **(8) Momentum decay check.** After 3 rebalances, compare paper monthly returns with the backtest distribution.
 2. **(28/96) Slippage report.** Compare sandbox fill prices with paper entries.
 3. **(41/42) Options chain checks.**
    - Skip quotes older than 5 minutes.
    - Skip entry if any leg's bid-ask spread is above 20% of mid.
+   - Both change the registered options test, so they need owner approval. Spreads are already recorded.
 4. **(51/53) Price cross-check.**
    - Compare yfinance with Upstox for open positions.
    - Flag possible splits (more than 40% overnight move).
-5. **(11/12/132) Tests for the untested Tools modules:** monte_carlo, walk_forward, correlation_engine.
-6. **(17/72) Drawdown details:** drawdown duration and days since peak on the momentum card.
-7. **(60) Disaster recovery:** handbook steps for restoring the backup into a fresh Neon database.
-8. **(35) Results calendar filter.** BLOCKED until a reliable free source is found.
+5. **(35) Results calendar filter.** BLOCKED until a reliable free source is found.
 
 ## P3 — Later or not planned
 

@@ -6,7 +6,7 @@
 
 ## State at hand-off
 - **Live trading:** OFF. Everything is paper or sandbox.
-- **Tests:** 223 pass locally; GitHub "Tests" must be green after every upload.
+- **Tests:** 229 pass locally; GitHub "Tests" must be green after every upload.
 - **Paper tests running:**
   - Swing v1/v2/v3: 30 trades each.
   - Options condor: 30 condors.
@@ -28,7 +28,7 @@
 2. Check the first weekly backup with the restore drill (Sunday Telegram: "Restore drill OK").
 3. Check the first pip-audit report in the Tests summary; raise caps for vulnerable packages if needed.
 4. After 3 momentum rebalances (around Feb 2027), add the momentum decay check (inventory ID 8).
-5. P2 list in `GARUD_PRIORITY_ROADMAP.md`.
+5. Remaining P2 list in `GARUD_PRIORITY_ROADMAP.md`. Done on 22 Oct: Tools tests, drawdown days, bootstrap fall-chance, spread recording, restore steps.
 6. Add the NSE 2027 holiday list to `backtest/nse_calendar.py` when NSE publishes it (December).
 
 ## Rules for any future AI working on Garud

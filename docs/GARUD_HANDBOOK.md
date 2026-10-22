@@ -76,6 +76,12 @@ Backtest ના આંકડા (યાદ રાખવા): M2 — 24.6%/વર
 3. મદદ માટે કોઈ પણ AI ને આ પુસ્તિકા + `docs/` folder + screenshot આપો. Repo: `gandiv-star/garud-ai-terminal`.
 4. ફેરફાર પછી હંમેશા Actions → Tests લીલું હોવું જોઈએ.
 
+**Database ગુમ થાય / બગડે તો (backup થી પાછું):**
+1. Actions → "Database backup (weekly)" → છેલ્લો સફળ run → Artifacts → `garud-db-backup` download (અંદર `garud_backup_YYYYMMDD.json.gz`). દર રવિવારના Telegram માં "Restore drill OK" હોય તે backup ભરોસાપાત્ર છે.
+2. Neon માં નવો database બનાવો → તેની connection string GitHub Secrets અને Streamlit secrets માં `DATABASE_URL` તરીકે બદલો (chat માં ક્યારેય ન મૂકવી).
+3. App/run પહેલી વાર ચાલતાં ખાલી tables (`trades`, `audit_events`) આપમેળે બને છે.
+4. Backup file ની JSON માંથી rows પાછી નાખવા કોઈ પણ AI ને આ પુસ્તિકા + file આપો: `trades` ની દરેક row અને `audit_events` ની દરેક row (id સિવાય) એ જ નામના columns માં insert કરવાની છે; `backup_db.restore_drill()` જેવી જ ગણતરી પછી મેળવી જોવી.
+
 **એક વાર ચલાવવાના અભ્યાસ (Actions → Run workflow, પરિણામ Telegram + 🔬 સંશોધન):** "M2 robustness check" (6 settings, bootstrap, NIFTY 200 અને Momentum 30 ETF સાથે સરખામણી) · "AI/ML Lab" (gradient-boosted trees vs M2 નિયમ, walk-forward) · "After-tax comparison" (M2 / G / NIFTY ETF / FD, tax પછી, ₹3 લાખ) · "Cost re-check (Upstox 2026 charges)" (₹20/order + DP charge સાથે ફરી ગણતરી — paper trading બદલાતું નથી).
 
 **Rehearsal:** Actions → "Momentum paper dry run" → Run workflow — અસલ ભાવ પર momentum નો પૂરો અભ્યાસ, કંઈ સાચવતું નથી. ગમે ત્યારે ચકાસી શકાય.

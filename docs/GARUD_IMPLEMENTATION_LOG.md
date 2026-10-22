@@ -23,6 +23,19 @@
 
 **Not changed (needs owner approval):** `GAP_AWARE_STOPS` (ID 14). It would change how future paper exits are priced.
 
+## Session 22 Oct 2026, part 2 (P2 items; information and safety only, no rule changed)
+
+| # | Feature IDs | Change | Files | Tests | Result |
+|---|---|---|---|---|---|
+| 8 | 11, 103, 12, 132 | Tests for the Tools modules: Monte Carlo, bootstrap, walk-forward, correlation | `tests/test_tools_modules.py` (new) | 4 | PASS |
+| 9 | 20 | M2 robustness bootstrap also reports the chance of a fall deeper than 25% (`p_dd_over_25`). Shown after the next robustness run | `backtest/m2_robustness.py`, `run_m2_robustness.py`, `garud_research.py` | `test_m2_robustness.py` +2 asserts | PASS |
+| 10 | 17 | Momentum card: current drawdown % and days below peak | `garud_research.py`, `garud_mobile.py` | `test_momentum_paper.py::test_days_below_peak` | PASS |
+| 11 | 72 | `longterm.metrics` adds `longest_dd_days` (peak → recovery) | `backtest/longterm.py` | `test_portfolio15.py::test_longest_drawdown_days` | PASS |
+| 12 | 41, 42 | Condor entry records the widest bid-ask spread % (Telegram + Options tab). **Not a filter.** Filtering would change the registered options test, so that needs owner approval | `backtest/options_paper.py`, `garud_mobile.py` | `test_options_paper.py` +1 assert | PASS |
+| 13 | 60 | Handbook: restore-from-backup steps | `docs/GARUD_HANDBOOK.md` | — | — |
+
+**After part 2:** 229 tests passed, 0 failed; UI smoke test passed.
+
 ## Earlier sessions (for traceability)
 
 - **18 Oct:**

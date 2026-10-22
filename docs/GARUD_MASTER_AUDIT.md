@@ -22,8 +22,8 @@ Anything that needs the live database or secrets is marked UNVERIFIED or BLOCKED
 
 | દરજ્જો | સંખ્યા |
 |---|---|
-| WORKING_VERIFIED | 52 |
-| PARTIAL | 60 |
+| WORKING_VERIFIED | 55 |
+| PARTIAL | 57 |
 | NOT_IMPLEMENTED | 23 |
 | BLOCKED | 3 |
 | CODE_ONLY | 2 |
@@ -59,7 +59,7 @@ Anything that needs the live database or secrets is marked UNVERIFIED or BLOCKED
 | Commit | 27ae2be (main), clean working tree, in sync with GitHub |
 | Python files | 142 files at baseline (144 after this audit), about 15,000 lines |
 | Tests before this audit | 215 passed, 0 failed (local runner; GitHub "Tests" workflow green per owner) |
-| Tests after this audit | 223 passed, 0 failed, plus the UI smoke test of all 10 screens passed |
+| Tests after this audit | 229 passed, 0 failed, plus the UI smoke test of all 10 screens passed |
 | Workflows | 16. Rule/momentum/options paper (6 cron times plus a cron-job.org dispatch), Tests, weekly backup, one-time studies, dry run |
 | Database | Neon Postgres: tables `trades` and `audit_events`. Last known size 20 trades / 170 events (backup on 19 Oct) |
 | Live trading | OFF. TRADING_MODE=PAPER; no LIVE_* variables set (per handbook and the owner) |
@@ -158,16 +158,16 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 
 | ID | Feature | Before → After | Priority | Key evidence |
 |---|---|---|---|---|
-| 11 | Monte Carlo Simulation | P | P2 | backtest/m2_robustness.py bootstrap() 5,000 resamples (run 21 Oct: 0% below FD); backtest/monte_carlo.py + … |
-| 12 | Portfolio Correlation Heatmap | P | P2 | portfolio/correlation_engine.py used in Tools portfolio pick (max 0.8) |
+| 11 | Monte Carlo Simulation | P → W | P2 | backtest/m2_robustness.py bootstrap() 5,000 resamples (run 21 Oct: 0% below FD); backtest/monte_carlo.py + … |
+| 12 | Portfolio Correlation Heatmap | P | P2 | portfolio/correlation_engine.py used in Tools portfolio pick (max 0.8) / 22 Oct (2): CorrelationEngine math… |
 | 13 | Risk Contribution Analysis | N | P3 | - |
 | 14 | Gap Risk Simulator | P | P1 | backtest/backtest_engine.py FillModel v2 gap-down stop fill min(stop, open)-0.10%; paper GAP_AWARE_STOPS=Fa… |
 | 15 | Liquidity and Capacity Model | P | P3 | momentum200: universe = 150 most liquid by 6-month traded value |
 | 16 | Capital Allocation Optimizer | N | P3 | backtest/portfolio15.py compares fixed allocations only |
-| 17 | Drawdown Recovery Monitor | P | P2 | garud_risk.drawdown(); run_momentum_paper DRAWDOWN_ALERT_PCT=15 Telegram alert |
+| 17 | Drawdown Recovery Monitor | P → W | P2 | garud_risk.drawdown(); run_momentum_paper DRAWDOWN_ALERT_PCT=15 Telegram alert / 22 Oct (2): momentum card … |
 | 18 | Strategy-wise Risk Budget | W | P3 | paper_rule Rule.capital per rule, risk_pct 1%; garud_risk.CAPITAL_PER_RULE; options circuit breaker -Rs.15,000 |
 | 19 | Cash and Exposure Forecast | N | P3 | - |
-| 20 | Ruin Risk Analysis | P | P3 | m2_robustness bootstrap p_below_fd and 5th percentile |
+| 20 | Ruin Risk Analysis | P | P3 | m2_robustness bootstrap p_below_fd and 5th percentile / 22 Oct (2): m2_robustness.bootstrap now reports p_d… |
 
 ### C. Trading & execution
 
@@ -203,8 +203,8 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 
 | ID | Feature | Before → After | Priority | Key evidence |
 |---|---|---|---|---|
-| 41 | Option Chain Data Validation | P | P2 | options_paper.quotes()/price_legs(): all four legs need live bid and ask; lot size from contracts |
-| 42 | Bid-Ask Spread and Liquidity Filter | P | P2 | Fills at bid/ask (pessimistic) |
+| 41 | Option Chain Data Validation | P | P2 | options_paper.quotes()/price_legs(): all four legs need live bid and ask; lot size from contracts / 22 Oct … |
+| 42 | Bid-Ask Spread and Liquidity Filter | P | P2 | Fills at bid/ask (pessimistic) / 22 Oct (2): spread recorded, NOT used as a filter (a filter would change t… |
 | 43 | Implied Volatility and IV Rank | N | P3 | Delta from chain greeks used for strike choice; IV not stored |
 | 44 | Greeks Dashboard | P | P3 | delta read per leg (options_paper._md) |
 | 45 | Expiry-day Risk Controls | W | - | options_paper.exit_decision EXPIRY_CLOSE from 14:30; settlement at intrinsic |
@@ -227,7 +227,7 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 | 57 | Dependency and Vulnerability Checks | N → P | P1 | NEW: pip-audit report step in .github/workflows/tests.yml (report only) |
 | 58 | CI/CD Quality Gates | W | - | .github/workflows/tests.yml: compileall + pytest on every push (green screenshots from owner) |
 | 59 | App Version and Run Reproducibility | P | P3 | garud_health.APP_VERSION (bumped to 2026.10.22-A1); study events carry version + registered date |
-| 60 | Disaster Recovery Plan | P | P2 | docs/GARUD_HANDBOOK.md section 6; weekly backup |
+| 60 | Disaster Recovery Plan | P | P2 | docs/GARUD_HANDBOOK.md section 6; weekly backup / 22 Oct (2): restore-from-backup steps added to docs/GARUD… |
 
 ### G. Compliance & safety
 
@@ -249,7 +249,7 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 | ID | Feature | Before → After | Priority | Key evidence |
 |---|---|---|---|---|
 | 71 | Net CAGR and Annualized Return | W | - | longterm.metrics(); tax_study after-tax CAGR (TAX_STUDY 21 Oct) |
-| 72 | Maximum Drawdown and Drawdown Duration | P | P2 | max_dd everywhere |
+| 72 | Maximum Drawdown and Drawdown Duration | P → W | P2 | max_dd everywhere / 22 Oct (2): longterm.metrics() longest_dd_days (peak -> recovery); tests/test_portfolio… |
 | 73 | Sharpe, Sortino and Calmar | W | - | m2_robustness.sharpe_sortino(); longterm.metrics ratio = CAGR/DD |
 | 74 | Win Rate, Average Win and Average Loss | W | - | rule_report._summary(), garud_research.rule_rows() |
 | 75 | Profit Factor and Expectancy | W | - | rule_summary pf, avg per trade |
@@ -295,7 +295,7 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 |---|---|---|---|---|
 | 101 | Strict Time-series Splits | W | - | evidence_matrix split_date; ml_lab train-first-5-years |
 | 102 | Purged/Embargoed Validation | P | P3 | ml_lab uses only labels already known (k-1 month embargo) |
-| 103 | Walk-forward Validation | W | - | ml_lab walk_forward_scores; backtest/walk_forward.py (Tools, untested) |
+| 103 | Walk-forward Validation | W | - | ml_lab walk_forward_scores; backtest/walk_forward.py (Tools, untested) / 22 Oct (2): backtest/walk_forward.… |
 | 104 | Data Leakage Detection | W | - | test_ml_lab strict no-look-ahead test |
 | 105 | Multiple-testing / Selection Bias Review | P | P3 | Pre-registration of every study; handbook lessons table |
 | 106 | Out-of-sample and Regime Results | W | - | evidence_matrix test split; longterm last-5-years window; ML 10-year OOS |
@@ -339,7 +339,7 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 | ID | Feature | Before → After | Priority | Key evidence |
 |---|---|---|---|---|
 | 131 | Automated Smoke Tests | W | - | tests.yml compileall; momentum_dry_run.yml |
-| 132 | Unit and Integration Test Coverage | P | P2 | 219 tests + UI stub test; no coverage % measured |
+| 132 | Unit and Integration Test Coverage | P | P2 | 219 tests + UI stub test; no coverage % measured / 22 Oct (2): +6 tests for Tools modules; 229 tests total |
 | 133 | Database Migration Tests | N | P3 | SQLAlchemy create_all, no migrations |
 | 134 | Scheduler Duplicate-run Protection | W | - | rule_paper_trading.yml concurrency group; idempotent ids |
 | 135 | Deployment Rollback | P | P3 | Git history; Streamlit redeploys main |

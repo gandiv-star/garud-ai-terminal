@@ -14,20 +14,21 @@
 | Run | Passed | Failed |
 |---|---|---|
 | Baseline 27ae2be | 215 | 0 |
-| After audit changes | **223** | **0** |
+| After audit changes | 223 | 0 |
+| After part 2 (P2 items) | **229** | **0** |
 | UI smoke test, after | 10/10 screens | 0 |
 
-**Per file** (number of test functions; parametrised cases make the total 223):
+**Per file** (number of test functions; parametrised cases make the total 229):
 
 | File | Tests | File | Tests |
 |---|---|---|---|
-| test_app_status | 5 | test_momentum_paper | 16 |
+| test_app_status | 5 | test_momentum_paper | 17 |
 | test_ask_garud | 6 | test_nse_calendar (new) | 2 |
 | test_backtest_fills | 10 | test_options_paper | 8 |
 | test_backup_db | 3 (+2 new) | test_paper_rule | 11 |
-| test_benchmarks | 2 | test_portfolio15 | 7 |
+| test_benchmarks | 2 | test_portfolio15 | 8 |
 | test_check_tokens | 2 | test_repo_hygiene | 3 |
-| test_cost_recheck (new) | 4 | | |
+| test_cost_recheck (new) | 4 | test_tools_modules (new) | 4 |
 | test_live_executor | 11 | test_sandbox_mirror | 4 |
 | test_live_gates | 19 | test_scanner | 1 |
 | test_live_guard | 9 | test_swing2 | 5 |
