@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
-APP_VERSION = "2026.10.18-P1"
+APP_VERSION = "2026.10.22-A1"
 OK, WARN, BAD, NA = "ok", "warn", "bad", "na"
 
 
@@ -36,22 +36,19 @@ def _age(ts, now) -> str:
 
 
 def last_session(now: datetime) -> date:
-    """Latest weekday session whose daily bar should exist by now (holidays not known)."""
+    """Latest NSE session whose daily bar should exist by now (weekends + NSE holidays known;
+    see backtest/nse_calendar.py)."""
+    from backtest import nse_calendar
     d = now.date()
-    if now.weekday() >= 5 or now.time() < time(9, 15):
+    if not nse_calendar.is_session(d) or now.time() < time(9, 15):
         d -= timedelta(days=1)
-    while d.weekday() >= 5:
-        d -= timedelta(days=1)
-    return d
+    return nse_calendar.previous_session(d)
 
 
 def _weekdays_between(a: date, b: date) -> int:
-    n, d = 0, a
-    while d < b:
-        d += timedelta(days=1)
-        if d.weekday() < 5:
-            n += 1
-    return n
+    """Trading sessions after a up to b (name kept for older callers)."""
+    from backtest import nse_calendar
+    return nse_calendar.sessions_between(a, b)
 
 
 # ------------------------------------------------------------------ individual checks
@@ -63,7 +60,7 @@ def check_market_data(market: dict | None, now: datetime, error: str = "") -> Ch
     if gap == 0:
         return Check("Market data (NIFTY)", OK, f"{d:%d %b}", "છેલ્લો ભાવ સમયસર")
     if gap == 1:
-        return Check("Market data (NIFTY)", WARN, f"{d:%d %b}", "1 session જૂનો (રજા હોય તો બરાબર)")
+        return Check("Market data (NIFTY)", WARN, f"{d:%d %b}", "1 session જૂનો (રજા હોય તો બરાબર — NSE રજાઓ ગણતરીમાં છે)")
     return Check("Market data (NIFTY)", BAD, f"{d:%d %b}", f"{gap} sessions જૂનો — ડેટા અટક્યો છે")
 
 

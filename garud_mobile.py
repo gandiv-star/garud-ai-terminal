@@ -193,6 +193,15 @@ def unrealised(open_trades: list, prices: dict) -> float:
     return round(sum((prices[t["symbol"]] - t["entry"]) * t["qty"] for t in open_trades if t["symbol"] in prices), 2)
 
 
+def unrealised_net(open_trades: list, prices: dict) -> float:
+    """Open P&L after the buy charges already paid and the sell charges an exit would cost,
+    on the same basis as closed-trade P&L (paper_rule.net_pnl)."""
+    from backtest.backtest_engine import ChargeModel
+    cm = ChargeModel()
+    return round(sum((prices[t["symbol"]] - t["entry"]) * t["qty"] - cm.buy_charges(t["entry"] * t["qty"])
+                     - cm.sell_charges(prices[t["symbol"]] * t["qty"]) for t in open_trades if t["symbol"] in prices), 2)
+
+
 @st.cache_data(ttl=120, show_spinner=False)
 def load_health(_settings, key: str) -> dict:
     import garud_health as gh
@@ -319,7 +328,8 @@ def home(settings, key) -> None:
     body = (f'<div class="g-grid">'
             f'<div><div class="g-s">ખુલ્લા trades નો નફો/નુકસાન</div>'
             f'<div class="g-big" style="color:{_col(unreal)}">{_money(unreal)}</div>'
-            f'<div class="g-s">{len(open_all)} stocks ખુલ્લા</div></div>'
+            f'<div class="g-s">{len(open_all)} stocks ખુલ્લા · charges પછી ≈ {_money(unrealised_net(open_all, prices))}'
+            f' · છેલ્લા બંધ ભાવે{"" if len(prices) == len({t["symbol"] for t in open_all}) else " (અમુક ભાવ મળ્યા નહીં)"}</div></div>'
             f'<div><div class="g-s">બંધ trades નું કુલ</div>'
             f'<div class="g-big" style="color:{_col(realised + opt_net)}">{_money(realised + opt_net)}</div>'
             f'<div class="g-s">stocks {_money(realised)} · options {_money(opt_net)}</div></div></div>'

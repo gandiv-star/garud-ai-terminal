@@ -3,7 +3,7 @@ database (never typed in). A test that was never run is shown as NOT RUN / NOT T
 from datetime import timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
-STUDIES = ("TAX_STUDY", "ML_LAB", "M2_ROBUSTNESS", "SWING2_15Y", "MOMENTUM_200", "PORTFOLIO_15Y", "EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
+STUDIES = ("COST_RECHECK", "TAX_STUDY", "ML_LAB", "M2_ROBUSTNESS", "SWING2_15Y", "MOMENTUM_200", "PORTFOLIO_15Y", "EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
 SAME_ASSUMPTIONS = ("Same engine for every strategy: entry at the next day's open, stop 2×ATR, "
                     "1% risk of ₹1,00,000 per trade, real delivery charges (STT, exchange, stamp, GST); "
                     "intraday and options tests use their own real cost models.")
@@ -103,6 +103,25 @@ def momentum_paper_rows(rebals: list, navs: list, names: dict, capital=100000.0)
     return out
 
 
+def cost_recheck_summary(p: dict) -> dict:
+    lines = []
+    for sc in p.get("scenarios") or []:
+        for r in (sc.get("rows") or [])[1:]:
+            lines.append((f'{sc.get("label")} · ₹{(sc.get("capital") or 0):,.0f} · {r.get("strategy")}',
+                          f'tax પછી {r.get("after_tax_cagr", "—")}% વર્ષે · હાથમાં ₹{(r.get("final_after_tax") or 0):,.0f} · '
+                          f'trades {r.get("trades", "—")}'))
+    paper = p.get("paper") or {}
+    if paper.get("trades"):
+        lines.append(("Swing paper trades પર વધારાનો ખર્ચ",
+                      f'{paper["trades"]} trades → ₹{paper["extra_total"]:,.0f} (≈ ₹{paper["extra_per_trade"]:,.0f}/trade)'))
+    lines.append(("નોંધ", "માત્ર માહિતી — paper trading અને જૂનાં પરિણામો બદલાયાં નથી"))
+    v = p.get("beats_fd_after_tax") or {}
+    ok = [k for k, x in v.items() if x]
+    return {"title": "ખર્ચની ફેર-ચકાસણી (Upstox 2026: ₹20/order + DP)", "pass": bool(ok),
+            "verdict": ("FD થી આગળ: " + ", ".join(ok)) if ok else "અસલ ખર્ચ પછી કોઈ FD થી આગળ નથી",
+            "lines": lines, "period": f'{p.get("start", "—")} → {p.get("end", "—")}'}
+
+
 def tax_study_summary(p: dict) -> dict:
     rows = p.get("rows") or []
     lines = [(str(r.get("strategy")),
@@ -179,7 +198,8 @@ def portfolio_summary(p: dict) -> dict:
 
 def study_cards(studies: dict) -> list:
     """[(kind, when or None, summary dict or None)] in a fixed order."""
-    makers = {"TAX_STUDY": tax_study_summary,
+    makers = {"COST_RECHECK": cost_recheck_summary,
+              "TAX_STUDY": tax_study_summary,
               "ML_LAB": ml_lab_summary,
               "M2_ROBUSTNESS": m2_robustness_summary,
               "SWING2_15Y": swing2_summary,
