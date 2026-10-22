@@ -89,15 +89,24 @@ def momentum_paper_rows(rebals: list, navs: list, names: dict, capital=100000.0)
             continue
         cap = float(capital.get(pid, 100000.0) if isinstance(capital, dict) else capital)
         last, latest = mine[-1], (nv[-1] if nv else {"value": mine[-1]["value"], "date": mine[-1]["fill_date"]})
-        peak, dd = cap, 0.0
+        peak, dd, peak_date = cap, 0.0, None
         for p in nv:
-            peak = max(peak, p["value"])
+            if p["value"] >= peak:
+                peak, peak_date = p["value"], p["date"]
             dd = max(dd, (peak - p["value"]) / peak * 100)
+        now_dd = round((peak - latest["value"]) / peak * 100, 2) if peak else 0.0
+        start_day = peak_date or (mine[0].get("fill_date") or latest["date"])
+        try:
+            from datetime import date as _date
+            under = (_date.fromisoformat(str(latest["date"])[:10]) - _date.fromisoformat(str(start_day)[:10])).days \
+                if now_dd > 0 else 0
+        except ValueError:
+            under = None
         out.append({"id": pid, "name": name, "started": True, "value": latest["value"], "date": latest["date"],
                     "ret": round((latest["value"] / cap - 1) * 100, 2), "capital": cap,
                     "nifty_ret": (round((latest["nifty"] / base_nifty - 1) * 100, 2)
                                   if latest.get("nifty") and base_nifty else None),
-                    "max_dd": round(dd, 2), "rebalances": len(mine), "last_fill": last.get("fill_date"),
+                    "max_dd": round(dd, 2), "dd_now": now_dd, "days_below_peak": under, "rebalances": len(mine), "last_fill": last.get("fill_date"),
                     "weak": bool(last.get("weak_market")), "cash": last.get("cash"),
                     "holdings": sorted((last.get("units") or {}).items())})
     return out
@@ -155,7 +164,8 @@ def m2_robustness_summary(p: dict) -> dict:
               f'Sharpe {r.get("sharpe", "—")}') for r in rows]
     b = p.get("bootstrap") or {}
     if b.get("p_below_fd") is not None:
-        lines.append(("Bootstrap", f'FD થી ઓછું આવવાની શક્યતા {b["p_below_fd"]}% · 5મો percentile {b["cagr_p5"]}%'))
+        lines.append(("Bootstrap", f'FD થી ઓછું આવવાની શક્યતા {b["p_below_fd"]}% · 5મો percentile {b["cagr_p5"]}%'
+                      + (f' · 25% થી વધુ ઘટાડાની શક્યતા {b["p_dd_over_25"]}%' if b.get("p_dd_over_25") is not None else "")))
     for x in p.get("benchmarks") or []:
         if x.get("available"):
             lines.append((x["name"], f'{x["cagr"]}% વર્ષે vs M2 {x["m2_cagr_same_period"]}% ({x["from"]}→{x["to"]})'))

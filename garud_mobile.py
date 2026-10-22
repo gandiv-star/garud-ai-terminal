@@ -524,7 +524,8 @@ def options_page(settings, key) -> None:
     open_c = [e for e in opt["entries"] if e["id"] not in closed_ids]
     for e in open_c:
         legs = e["legs"]
-        body = row("Expiry", _e(e["expiry"]), f'lot {e["lot"]} · ખુલ્યો {e["time"][:10]}')
+        body = row("Expiry", _e(e["expiry"]), f'lot {e["lot"]} · ખુલ્યો {e["time"][:10]}'
+                   + (f' · સૌથી પહોળો bid-ask {e["max_spread_pct"]}%' if e.get("max_spread_pct") is not None else ""))
         for leg in legs:
             body += row(f'{"વેચ્યો" if leg["side"] < 0 else "ખરીદ્યો"} {leg["strike"]:.0f} {leg["type"]}',
                         f'₹{leg.get("entry", 0):,.2f}', "", RED if leg["side"] < 0 else GREEN)
@@ -906,6 +907,8 @@ def research_page(settings, key) -> None:
                     + row("વળતર", f'{r["ret"]:+.2f}%',
                           f'NIFTY એ જ સમયમાં {r["nifty_ret"]:+.2f}%' if r["nifty_ret"] is not None else "", _col(r["ret"]))
                     + row("સૌથી મોટો ઘટાડો", f'{r["max_dd"]:.1f}%', f'{r["rebalances"]} rebalance · છેલ્લું {r["last_fill"]}')
+                    + row("હાલ ટોચથી નીચે", f'{r.get("dd_now") or 0:.1f}%',
+                          (f'{r["days_below_peak"]} દિવસથી ટોચ નીચે' if r.get("days_below_peak") else "ટોચ પર"))
                     + row("હાલ", "Liquid fund" if r["weak"] and not r["holdings"] else f'{len(r["holdings"])} શેર',
                           f'રોકડ ₹{(r["cash"] or 0):,.0f}' + (" · બજાર નબળું" if r["weak"] else "")))
             if r["holdings"]:
