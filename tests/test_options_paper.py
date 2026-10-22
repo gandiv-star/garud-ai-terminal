@@ -83,6 +83,7 @@ def test_entry_window_structure_and_no_duplicate():
     assert len(e) == 1 and e[0]["id"] == "IC-2026-10-27" and e[0]["lot"] == 75 and e[0]["credit"] > 0
     sc, sp, lc, lp = [l["strike"] for l in e[0]["legs"]]
     assert sc > 25000 > sp and lc == sc + 200 and lp == sp - 200
+    assert e[0]["max_spread_pct"] is not None and e[0]["max_spread_pct"] > 0      # recorded, never blocks
     run(db, data, datetime(2026, 10, 21, 9, 55, tzinfo=IST))
     assert len(entries(db)) == 1
 

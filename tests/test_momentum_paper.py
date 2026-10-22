@@ -256,3 +256,16 @@ def test_main_completes_scheduled_and_manual():
     assert code == 0
     code, sent = _main_with_fakes(None, days, manual=True)
     assert code == 0 and sent and "starts with the 30 Oct 2026" in sent[0]
+
+
+def test_days_below_peak():
+    import garud_research as gr
+    rebals = [{"portfolio": "G", "fill_date": "2026-11-02", "value": 100000.0, "units": {"A": 1}}]
+    navs = [{"portfolio": "G", "date": "2026-11-02", "value": 100000.0},
+            {"portfolio": "G", "date": "2026-11-05", "value": 104000.0},
+            {"portfolio": "G", "date": "2026-11-20", "value": 98800.0}]
+    r = gr.momentum_paper_rows(rebals, navs, {"G": "G"}, {"G": 100000.0})[0]
+    assert r["dd_now"] == 5.0 and r["days_below_peak"] == 15 and r["max_dd"] == 5.0
+    navs.append({"portfolio": "G", "date": "2026-11-25", "value": 105000.0})
+    r = gr.momentum_paper_rows(rebals, navs, {"G": "G"}, {"G": 100000.0})[0]
+    assert r["dd_now"] == 0.0 and r["days_below_peak"] == 0

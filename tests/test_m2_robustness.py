@@ -45,6 +45,9 @@ def test_monthly_returns_sharpe_bootstrap():
     assert sh is not None and so is None or so > 0                    # no losing month -> Sortino undefined/large
     b = rb.bootstrap(rets, 3.0, n=500)
     assert b["p_below_fd"] == 0.0 and b["cagr_p5"] > 7
+    assert b["p_dd_over_25"] == 0.0                                   # never a losing month -> no drawdown
+    crash = rb.bootstrap([0.05] * 20 + [-0.30] * 5, 2.0, n=500)
+    assert crash["p_dd_over_25"] > 50
     assert rb.bootstrap(rets[:5], 1.0)["p_below_fd"] is None
     assert rb.series_cagr(curve, days[0], days[-1])[0] > 0
     assert rb.series_cagr(curve[:10], days[0], days[9])[0] is None

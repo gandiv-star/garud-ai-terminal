@@ -135,3 +135,12 @@ def test_research_card():
     assert c["pass"] and "Paper" in c["verdict"] and "✅ PASS" in c["lines"][1][0]
     kinds = [k for k, _, _ in gr.study_cards({"PORTFOLIO_15Y": (None, p)})]
     assert kinds.index("PORTFOLIO_15Y") < kinds.index("EVIDENCE_MATRIX")
+
+
+def test_longest_drawdown_days():
+    from datetime import date as _d
+    from backtest import longterm as lt
+    curve = [(_d(2020, 1, 1), 100), (_d(2020, 1, 11), 90), (_d(2020, 2, 1), 95), (_d(2020, 3, 1), 101),
+             (_d(2020, 3, 5), 100)]
+    m = lt.metrics(curve, _d(2020, 1, 1), _d(2020, 3, 5))
+    assert m["longest_dd_days"] == 60 and m["max_dd"] == 10.0
