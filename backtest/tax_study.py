@@ -152,6 +152,13 @@ def simulate_taxed(mkt, start_i: int, target_fn, rebalance_idx: list, taxed: boo
                     buys[s] = diff
             need = sum(buys.values()) * 1.002
             scale = min(1.0, cash / need) if need > 0 else 0.0
+            # Flat per-order charges (Upstox Rs.20/order) can exceed the 0.2% buffer: shrink the scale until
+            # every planned buy fits, so no stock is silently left in cash. (Fixed 22 Oct 2026 — found by the
+            # paper replay; with percentage-only charges the buffer always suffices and nothing changes.)
+            for _ in range(5000):
+                if scale <= 0 or sum(a * scale + cm.buy_charges(a * scale) for a in buys.values()) <= cash + 1e-9:
+                    break
+                scale *= 0.999
             for s, amt in buys.items():
                 amt *= scale
                 fee = cm.buy_charges(amt)
