@@ -91,4 +91,4 @@ def test_research_card():
     c = gr.ml_lab_summary({"adopt_ml": False, "rows": [{"strategy": "x", "full": {"cagr": 1, "max_dd": 2}}],
                            "top_quintile_hit_rate": 55.0})
     assert not c["pass"] and "M2" in c["verdict"] and len(c["lines"]) == 2
-    assert [k for k, _, _ in gr.study_cards({})][:2] == ["TAX_STUDY", "ML_LAB"]
+    assert [k for k, _, _ in gr.study_cards({})][:3] == ["COST_RECHECK", "TAX_STUDY", "ML_LAB"]
