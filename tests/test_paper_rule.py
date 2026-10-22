@@ -50,16 +50,22 @@ def test_no_exit_yet():
     assert pr.rule_exit(ENTRY, 50.0, flat_bars(5), 10, now=LATE) is None
 
 
-def test_gap_down_paper_fill_unchanged_until_owner_approves():
-    """Regression guard: paper stops still fill AT the stop on a gap-down (legacy) — the
-    gap-aware option exists but is OFF until approved."""
-    assert pr.GAP_AWARE_STOPS is False
+def test_gap_down_fill_by_entry_day():
+    """Decision B (22 Oct 2026): positions opened from 23 Oct 2026 fill a gap-down stop at the open;
+    older positions keep the stop price (never re-priced)."""
+    assert pr.GAP_AWARE_FROM == date(2026, 10, 23)
     bars = flat_bars()
     bars[2] = bar(DAYS[2], 88, 89, 85, 86)                      # opens 7 below the 95 stop
-    assert pr.rule_exit(ENTRY, 95.0, bars, 10, now=LATE)[1] == 95.0
+    assert pr.rule_exit(ENTRY, 95.0, bars, 10, now=LATE)[1] == 95.0           # entry 5 Oct: old basis
     assert pr.rule_exit(ENTRY, 95.0, bars, 10, now=LATE, gap_aware=True)[1] == 88.0
-    bars[2] = bar(DAYS[2], 97, 98, 93, 94)                      # no gap: same either way
-    assert pr.rule_exit(ENTRY, 95.0, bars, 10, now=LATE, gap_aware=True)[1] == 95.0
+    new_days = trading_days(date(2026, 10, 23), 15)
+    new_entry = datetime(2026, 10, 23, 4, 0, tzinfo=UTC)
+    nb = [bar(d, 100, 101, 99, 100) for d in new_days]
+    nb[2] = bar(new_days[2], 88, 89, 85, 86)
+    late = datetime(2026, 11, 30, 18, 0, tzinfo=IST)
+    assert pr.rule_exit(new_entry, 95.0, nb, 10, now=late)[1] == 88.0       # new trade: at the open
+    nb[2] = bar(new_days[2], 97, 98, 93, 94)                    # no gap: stop price either way
+    assert pr.rule_exit(new_entry, 95.0, nb, 10, now=late)[1] == 95.0
 
 
 def test_completed_bars_drops_todays_forming_bar():
