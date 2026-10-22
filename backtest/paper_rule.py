@@ -17,7 +17,7 @@ Execution model (identical to BacktestEngine.run):
 """
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from backtest.backtest_engine import ChargeModel, _nifty_series, _regime_at, charges_for
 from core.constants import Decision
@@ -130,18 +130,19 @@ def position_size(rule: Rule, entry_price: float, atr: float | None) -> tuple[fl
     return round(stop_price, 2), qty
 
 
-# Gap-aware paper stops (exit at min(stop, open) on a gap-down) — prepared 18 Oct 2026 but
-# OFF: switching it on changes how future paper exits are priced, so it waits for the owner's
-# approval. Already-closed paper trades are never re-priced either way.
-GAP_AWARE_STOPS = False
+# Gap-aware paper stops: on a gap-down the stop fills at min(stop, open), as a real stop order
+# would. Prepared 18 Oct 2026; owner approved (decision B) on 22 Oct 2026 for positions OPENED
+# from GAP_AWARE_FROM on. Older positions keep the stop-price fill, and closed trades are never
+# re-priced.
+GAP_AWARE_FROM = date(2026, 10, 23)
 
 
 def rule_exit(entry_timestamp: datetime, stop_price: float, bars: list, max_holding_days: int,
               now: datetime | None = None, gap_aware: bool | None = None):
     """Returns (reason, exit_price, exit_date) or None. Replays every bar since entry."""
-    gap_aware = GAP_AWARE_STOPS if gap_aware is None else gap_aware
     now = now or now_ist()
     entry_date = _to_ist_date(entry_timestamp)
+    gap_aware = (entry_date >= GAP_AWARE_FROM) if gap_aware is None else gap_aware
     done = {id(b) for b in completed_bars(bars, now)}
     held = 0
     for b in bars:
