@@ -34,6 +34,7 @@ VARIANTS = (  # name, top_n, keep_rank, quarterly
 )
 ROBUST_MIN_PASS = 4
 BOOTSTRAP_N = 5000
+MAX_DD_ALERT = 0.25        # bootstrap reports the chance of a drawdown deeper than this (information)
 BENCH_TICKERS = {"NIFTY 200 index": "^CNX200", "NIFTY200 Momentum 30 ETF": "MOM30IETF.NS"}
 
 
@@ -75,16 +76,21 @@ def sharpe_sortino(rets: list, rf_annual: float = lt.LIQUID_RATE) -> tuple:
 
 def bootstrap(rets: list, years: float, n: int = BOOTSTRAP_N, seed: int = 7) -> dict:
     if len(rets) < 24 or years <= 0:
-        return {"p_below_fd": None, "cagr_p5": None, "cagr_median": None}
-    rnd, k, cagrs = random.Random(seed), len(rets), []
+        return {"p_below_fd": None, "cagr_p5": None, "cagr_median": None, "p_dd_over_25": None}
+    rnd, k, cagrs, deep = random.Random(seed), len(rets), [], 0
     for _ in range(n):
-        g = 1.0
+        g, peak, worst = 1.0, 1.0, 0.0
         for _ in range(k):
             g *= 1 + rets[rnd.randrange(k)]
+            peak = max(peak, g)
+            worst = max(worst, 1 - g / peak)
         cagrs.append(g ** (1 / years) - 1)
+        deep += worst > MAX_DD_ALERT
     cagrs.sort()
     return {"p_below_fd": round(sum(1 for c in cagrs if c < lt.FD_RATE) / n * 100, 1),
-            "cagr_p5": round(cagrs[int(0.05 * n)] * 100, 2), "cagr_median": round(cagrs[n // 2] * 100, 2)}
+            "cagr_p5": round(cagrs[int(0.05 * n)] * 100, 2), "cagr_median": round(cagrs[n // 2] * 100, 2),
+            # information only (month-end values; drawdowns inside a month are not seen)
+            "p_dd_over_25": round(deep / n * 100, 1)}
 
 
 def series_cagr(series: list, start: date, end: date):

@@ -199,12 +199,20 @@ def metrics(curve: list, start: date, end: date) -> dict:
         return {"cagr": None, "max_dd": None, "ratio": None, "final": None}
     days = (pts[-1][0] - pts[0][0]).days
     cagr = (pts[-1][1] / pts[0][1]) ** (365 / days) - 1 if days > 0 else 0.0
-    peak, dd = pts[0][1], 0.0
-    for _, v in pts:
-        peak = max(peak, v)
+    peak, dd, peak_day, longest = pts[0][1], 0.0, pts[0][0], 0
+    below = False
+    for d, v in pts:
+        if v >= peak:
+            if below:                                   # recovered: peak -> recovery
+                longest = max(longest, (d - peak_day).days)
+            peak, peak_day, below = v, d, False
+        else:
+            below = True
+            longest = max(longest, (d - peak_day).days)  # still below: peak -> now
         dd = max(dd, (peak - v) / peak)
     return {"cagr": round(cagr * 100, 2), "max_dd": round(dd * 100, 2),
-            "ratio": round(cagr / dd, 2) if dd > 0 else None, "final": round(pts[-1][1], 0)}
+            "ratio": round(cagr / dd, 2) if dd > 0 else None, "final": round(pts[-1][1], 0),
+            "longest_dd_days": longest}   # longest stretch (calendar days) below a previous peak
 
 
 def yearly(curve: list) -> dict:

@@ -31,7 +31,8 @@ def summary_text(res: dict) -> str:
     b = res.get("bootstrap") or {}
     if b.get("p_below_fd") is not None:
         lines.append(f"🎲 Bootstrap (M2): chance 15-yr CAGR < FD 7% = {b['p_below_fd']}% · "
-                     f"5th percentile {b['cagr_p5']}% · median {b['cagr_median']}%")
+                     f"5th percentile {b['cagr_p5']}% · median {b['cagr_median']}%"
+                     + (f" · chance of a fall > 25% {b['p_dd_over_25']}%" if b.get("p_dd_over_25") is not None else ""))
     for x in res.get("benchmarks") or []:
         if x["available"]:
             lines.append(f"📏 {x['name']} {x['from']}→{x['to']}: {x['cagr']}%/yr vs M2 {x['m2_cagr_same_period']}%/yr")

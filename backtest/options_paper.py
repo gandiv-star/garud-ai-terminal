@@ -164,6 +164,20 @@ def price_legs(legs: list, chain: list, opening: bool):
     return out
 
 
+def max_spread_pct(legs: list, chain: list):
+    """Widest bid-ask spread among the legs, in % of the mid price. Recorded for information
+    (audit 22 Oct 2026); it does NOT block entries — that would change the registered test."""
+    _, q = quotes(chain)
+    worst = None
+    for leg in legs:
+        m = q.get((float(leg["strike"]), leg["type"])) or {}
+        bid, ask = m.get("bid") or 0, m.get("ask") or 0
+        if bid > 0 and ask >= bid:
+            pct = (ask - bid) / ((ask + bid) / 2) * 100
+            worst = pct if worst is None else max(worst, pct)
+    return round(worst, 1) if worst is not None else None
+
+
 def net_premium(legs: list, prices: list, opening: bool) -> float:
     """Per unit, shorts minus longs: opening -> credit received; closing -> debit paid
     (buy back the shorts at the ask, sell the wings at the bid)."""
@@ -337,14 +351,17 @@ def run(db, data: UpstoxData | None = None, now: datetime | None = None, allow_e
             ch = round(trade_charges(legs, prices, lot, opening=True), 2)
             for leg, p in zip(legs, prices):
                 leg["entry"] = p
+            spread = max_spread_pct(legs, chain)
             _save(db, "OPT_ENTRY", {"id": cid, "time": now.isoformat(), "expiry": str(expiry), "lot": lot,
-                                    "legs": legs, "credit": credit, "entry_charges": ch, "note": note})
+                                    "legs": legs, "credit": credit, "entry_charges": ch, "note": note,
+                                    "max_spread_pct": spread})
             rep.activity = True
             width = WING
             rep.lines.append(
                 f"🟢 Condor {cid}: sell {legs[1]['strike']:.0f}PE/{legs[0]['strike']:.0f}CE, "
                 f"buy {legs[3]['strike']:.0f}PE/{legs[2]['strike']:.0f}CE | credit {credit} x {lot} = "
-                f"Rs.{credit * lot:,.0f} | max loss ≈ Rs.{(width - credit) * lot:,.0f} | {note}")
+                f"Rs.{credit * lot:,.0f} | max loss ≈ Rs.{(width - credit) * lot:,.0f} | {note}"
+                + (f" | widest bid-ask {spread}%" if spread is not None else ""))
         except _Skip as s:
             rep.lines.append(f"ℹ️ Options: {s}")
         except Exception as e:
