@@ -100,6 +100,7 @@ def test_stop_loss_and_no_reentry_same_expiry():
     data.spot = 25000
     r = run(db, data, datetime(2026, 10, 23, 9, 55, tzinfo=IST))
     assert any("already traded" in l for l in r.lines)
+    assert not any("annualised" in l for l in r.lines)      # 1 condor: no yearly figure yet
 
 
 def test_take_profit():
