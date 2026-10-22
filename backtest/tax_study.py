@@ -100,10 +100,10 @@ class TaxBook:
 
 
 def simulate_taxed(mkt, start_i: int, target_fn, rebalance_idx: list, taxed: bool = True,
-                   capital: float = lt.CAPITAL) -> dict:
+                   capital: float = lt.CAPITAL, charges: ChargeModel | None = None) -> dict:
     """longterm.simulate (same trades and costs) plus tax lots; taxed=False reproduces it exactly.
     Yearly tax is paid from cash. Returns the curve, tax paid, and the value after a final sale."""
-    cm = ChargeModel()
+    cm = charges or ChargeModel()
     units, cash = {}, float(capital)
     book = TaxBook()
     pending, trades = None, 0
@@ -181,7 +181,8 @@ def cagr(start_value: float, end_value: float, start: date, end: date):
     return round(((end_value / start_value) ** (365 / days) - 1) * 100, 2)
 
 
-def run(data, eval_start: date, candidates_fn, nifty50_members_fn, capital: float = CAPITAL) -> dict:
+def run(data, eval_start: date, candidates_fn, nifty50_members_fn, capital: float = CAPITAL,
+        charges: ChargeModel | None = None) -> dict:
     mkt = data.mkt
     start_i = max(bisect_right(mkt.dates, eval_start) - 1, 0)
     start, end = mkt.dates[start_i], mkt.dates[-1]
@@ -195,8 +196,8 @@ def run(data, eval_start: date, candidates_fn, nifty50_members_fn, capital: floa
               ("M2 Momentum 200", lambda: m2.momentum_targets(data, candidates_fn, True), rebal),
               ("G NIFTY 50 momentum", lambda: (lambda i: m2.g_weights(mkt, i, nifty50_members_fn)), rebal))
     for name, make, idx in makers:
-        pre = simulate_taxed(mkt, sim_start, make(), idx, taxed=False, capital=capital)
-        post = simulate_taxed(mkt, sim_start, make(), idx, taxed=True, capital=capital)
+        pre = simulate_taxed(mkt, sim_start, make(), idx, taxed=False, capital=capital, charges=charges)
+        post = simulate_taxed(mkt, sim_start, make(), idx, taxed=True, capital=capital, charges=charges)
         m_pre = lt.metrics(pre["curve"], start, end)
         p0 = next(v for d, v in post["curve"] if d >= start)
         rows.append({"strategy": name, "pre_tax_cagr": m_pre["cagr"], "max_dd": m_pre["max_dd"],

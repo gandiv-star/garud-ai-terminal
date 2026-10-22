@@ -21,6 +21,7 @@ class ChargeModel:
     exchange_charges_pct: float = 0.00297
     stamp_duty_pct: float = 0.015
     sebi_charges_pct: float = 0.0001
+    dp_per_sell: float = 0.0        # depository charge per sell order (+18% GST); 0 = the model used so far
 
     def buy_charges(self, turnover: float) -> float:
         brokerage = self.brokerage_flat + turnover * (self.brokerage_pct / 100)
@@ -36,8 +37,18 @@ class ChargeModel:
         exchange = turnover * (self.exchange_charges_pct / 100)
         stt = turnover * (self.stt_pct / 100)
         sebi = turnover * (self.sebi_charges_pct / 100)
-        gst = (brokerage + exchange) * 0.18
-        return brokerage + stt + exchange + sebi + gst
+        dp = self.dp_per_sell if turnover > 0 else 0.0
+        gst = (brokerage + exchange + dp) * 0.18
+        return brokerage + stt + exchange + sebi + dp + gst
+
+
+def upstox_delivery_2026() -> ChargeModel:
+    """Upstox equity-delivery charges as published on upstox.com/brokerage-charges (checked 22 Oct 2026):
+    brokerage Rs.20 per executed order, DP Rs.20 + GST per scrip on sell, STT 0.1% both sides,
+    NSE transaction 0.00307% (from 1 Mar 2026), stamp duty 0.015% on buy, GST 18%.
+    NOT the default: every existing benchmark, study and paper P&L keeps the old ChargeModel()
+    (brokerage 0, no DP charge) until the owner approves a switch."""
+    return ChargeModel(brokerage_flat=20.0, exchange_charges_pct=0.00307, dp_per_sell=20.0)
 
 
 @dataclass(frozen=True)
