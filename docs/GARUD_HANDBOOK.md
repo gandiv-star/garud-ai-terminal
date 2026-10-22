@@ -76,7 +76,7 @@ Backtest ના આંકડા (યાદ રાખવા): M2 — 24.6%/વર
 3. મદદ માટે કોઈ પણ AI ને આ પુસ્તિકા + `docs/` folder + screenshot આપો. Repo: `gandiv-star/garud-ai-terminal`.
 4. ફેરફાર પછી હંમેશા Actions → Tests લીલું હોવું જોઈએ.
 
-**એક વાર ચલાવવાના અભ્યાસ (Actions → Run workflow, પરિણામ Telegram + 🔬 સંશોધન):** "M2 robustness check" (6 settings, bootstrap, NIFTY 200 અને Momentum 30 ETF સાથે સરખામણી) · "AI/ML Lab" (gradient-boosted trees vs M2 નિયમ, walk-forward) · "After-tax comparison" (M2 / G / NIFTY ETF / FD, tax પછી, ₹3 લાખ).
+**એક વાર ચલાવવાના અભ્યાસ (Actions → Run workflow, પરિણામ Telegram + 🔬 સંશોધન):** "M2 robustness check" (6 settings, bootstrap, NIFTY 200 અને Momentum 30 ETF સાથે સરખામણી) · "AI/ML Lab" (gradient-boosted trees vs M2 નિયમ, walk-forward) · "After-tax comparison" (M2 / G / NIFTY ETF / FD, tax પછી, ₹3 લાખ) · "Cost re-check (Upstox 2026 charges)" (₹20/order + DP charge સાથે ફરી ગણતરી — paper trading બદલાતું નથી).
 
 **Rehearsal:** Actions → "Momentum paper dry run" → Run workflow — અસલ ભાવ પર momentum નો પૂરો અભ્યાસ, કંઈ સાચવતું નથી. ગમે ત્યારે ચકાસી શકાય.
 
@@ -101,3 +101,7 @@ Backtest ના આંકડા (યાદ રાખવા): M2 — 24.6%/વર
 3. ✅ Tax પછીનું વળતર — તૈયાર (21 ઓક્ટો). Tax ના નિયમ બદલાય તો `backtest/tax_study.py` માં STCG / LTCG / LTCG_EXEMPT બદલવા.
 4. AI allocator — mode પ્રમાણે Momentum / Options / Liquid વચ્ચે વહેંચણી (options condor ના 30 trades પછી).
 5. Live (આપમેળે orders) માટે: static IP સર્વર, Upstox live token, compliance checklist (`docs/COMPLIANCE.md`).
+
+## 9. Audit (22 ઓક્ટો 2026)
+
+140 features ની પુરાવા સાથેની ચકાસણી, પ્રાથમિકતા અને આગળનું કામ: `docs/GARUD_*` files (શરૂઆત `GARUD_MASTER_AUDIT.md` અને `GARUD_NEXT_SESSION_HANDOFF.md` થી). દર વર્ષે ડિસેમ્બરમાં NSE ની નવા વર્ષની રજાઓ `backtest/nse_calendar.py` માં ઉમેરવી.
