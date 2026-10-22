@@ -25,7 +25,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python backtest/backup_db.py
+      - name: Full restore drill into a throw-away test database (never production)
+        env:
+          DATABASE_URL: sqlite:///restore_test.db
+          TRADING_MODE: PAPER
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python backtest/restore_drill.py garud_backup_*.json.gz --app
       - name: Keep backup file
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: garud-db-backup
