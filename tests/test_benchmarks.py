@@ -26,3 +26,12 @@ def test_checkpoint_rules_unchanged():
     assert "PASS" in rr.checkpoint_status([300.0] * 20 + [-200.0] * 10, bench)
     assert "FAIL" in rr.checkpoint_status([100.0] * 10 + [-200.0] * 20, bench)
     assert rr.BENCHMARK_END.isoformat() == "2026-09-26" and rr.PF_PASS == 1.15
+
+
+def test_v3_version_and_comparison_text():
+    from backtest import run_benchmark_v2 as rb
+    assert rr.BENCH_VERSION_V3 == 3
+    v = {"volatility_expansion_rule_v2_nifty50": {"trades": 10, "net": 5.0, "pf": 1.0, "mean": 0.5}}
+    t = rb.comparison_text(v, v, v)
+    assert "v3:" in t and "v1 remains the yardstick" in t
+    assert "v3:" not in rb.comparison_text(v, v)
