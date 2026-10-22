@@ -555,7 +555,25 @@ def options_page(settings, key) -> None:
             + row("Profit factor", pf if pf is not None else "—", "પાસ થવા ≥ 1.2 અને FD 7% થી વધુ વાર્ષિક"))
     for x in sorted(opt["exits"], key=lambda x: x["time"], reverse=True)[:20]:
         body += row(_e(x["id"]), _money(x["net_pnl"]), f'{_e(x["reason"])} · {x["time"][:10]}', _col(x["net_pnl"]))
+    if nets and not wins:
+        body += ('<div class="g-s" style="margin-top:6px">PF = નફાવાળા condors નો કુલ નફો ÷ નુકસાન. હજી એક પણ '
+                 'નફાવાળો condor નથી એટલે PF 0 — 30 condors પછી જ અર્થ (આશરે અઠવાડિયે 1).</div>')
     card("Options test — NIFTY iron condor", body)
+    by_id = {e["id"]: e for e in opt["entries"]}
+    for x in sorted(opt["exits"], key=lambda x: x["time"], reverse=True)[:3]:
+        if x["id"] not in by_id:
+            continue
+        d = op.diagnose(by_id[x["id"]], x)
+        body = row("ખુલ્યો → બંધ", f'{_e(d["reason"])}', f'{_e(d["opened"])} → {_e(d["closed"])}'
+                   + (" · એ જ દિવસે" if d["same_day"] else ""))
+        body += row("Credit → બંધ કરવાનો ખર્ચ (દરેક unit)", f'{d["credit"]} → {d["debit"] if d["debit"] is not None else "—"}',
+                    f'charges ₹{d["charges"]:,.0f}')
+        for leg in d["legs"]:
+            body += row(_e(leg["leg"]), _money(leg["effect"]) if leg["effect"] is not None else "—",
+                        f'{leg["entry"]} → {leg["exit"] if leg["exit"] is not None else "settled"}', _col(leg["effect"]))
+        if d["worst_leg"]:
+            body += f'<div class="g-s" style="margin-top:6px">સૌથી મોટું નુકસાન: {_e(d["worst_leg"])}</div>'
+        card(f'કેમ? Condor {_e(x["id"])}', body)
 
 
 def mode_page(settings, key) -> None:
@@ -842,6 +860,32 @@ def health_page(settings, key) -> None:
     body = "".join(row(f'<span class="g-dot" style="background:{DOT.get(c.status, MUTED)}"></span>{_e(c.name)}',
                        _e(c.value), _e(c.detail)) for c in h["checks"])
     card("ચકાસણીઓ", body)
+    try:
+        from backtest import live_readiness as lr
+        from backtest import momentum_paper as mp, paper_rule, rule_report
+        import garud_research as gr
+        trades = load_trades(settings, key)
+        try:
+            benches = load_benchmarks(settings, key[:9])
+        except Exception:
+            benches = {}
+        statuses = {r["title"]: r["status"] for r in gr.rule_rows(paper_rule.RULES, trades, benches,
+                                                                   rule_report.checkpoint_status)}
+        try:
+            mom = load_momentum(settings, key)
+            months = max([r.get("rebalances", 0) for r in gr.momentum_paper_rows(mom["rebals"], mom["navs"],
+                                                                                 mp.PORTFOLIOS, mp.CAPITALS)
+                          if r.get("started")] or [0])
+        except Exception:
+            months = 0
+        items = lr.checklist(statuses, h.get("live"), months, datetime.now(IST).date())
+        colr = {lr.OK: GREEN, lr.TODO: RED, lr.MANUAL: AMBER}
+        body = "".join(row(_e(n), _e(st_), _e(d), colr[st_]) for n, st_, d in items)
+        body += (f'<div class="g-s" style="margin-top:6px">{"✅ બધું તૈયાર" if lr.ready(items) else "⛔ અસલ પૈસા માટે હજી તૈયાર નથી"}'
+                 ' — વિગત: docs/GARUD_LIVE_READINESS.md. આ યાદી કંઈ ચાલુ કરતી નથી.</div>')
+        card("Live-readiness checklist", body)
+    except Exception as e:
+        card("Live-readiness checklist", f'<div class="g-s">Unavailable: {_e(e)}</div>')
     errs = "".join(row(_e(e), "", f"{ts:%d %b %H:%M}") for ts, e in h["errors"])
     card("તાજેતરની data issues (automatic runs)", errs or '<div class="g-s">કોઈ નથી</div>')
     if st.button("🤖 AI ચકાસો (Gemini ને એક નાનો પ્રશ્ન)", use_container_width=True):
