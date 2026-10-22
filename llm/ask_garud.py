@@ -36,7 +36,8 @@ STANDING_FACTS = {
     "cost_basis": ("Paper positions opened from 23 Oct 2026 pay Upstox's real delivery charges (Rs.20 per order + "
                    "Rs.20+GST DP per sell, about Rs.71 more per swing round trip); older positions keep the old model "
                    "(no brokerage/DP) and are not re-priced. Cost re-check 22 Oct: after tax M2 21.18%, G 9.74%, "
-                   "NIFTY ETF 10.95% at Rs.3 lakh; at Rs.1 lakh M2 20.79%, G 9.10%, ETF 11.11%."),
+                   "NIFTY ETF 10.95% at Rs.3 lakh; at Rs.1 lakh M2 20.79%, G 9.10%, ETF 11.11%. NOTE: those Upstox-charge "
+                   "figures were made before a fix on 22 Oct (some money stayed uninvested); a re-run supersedes them."),
     "swing_benchmarks_5y": ("Rule benchmarks 2021-09-28 to 2026-09-26. v1 legacy fills: v1 PF 1.43, v2 PF 1.14, v3 PF 1.28 "
                             "(the pre-registered yardstick). Benchmark v3 = realistic gap fills + slippage + Upstox charges "
                             "(22 Oct 2026): v1-8 stocks PF 1.04 net +Rs.1,378 (90 trades); v2-NIFTY 50 PF 0.87 net "
