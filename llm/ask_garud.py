@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from llm import advisor
 
-PROMPT_VERSION = "ask_v2"
+PROMPT_VERSION = "ask_v3"
 EVENT = "ASK_GARUD"
 MAX_QUESTION_CHARS = 500
 MAX_PER_DAY = 30
@@ -33,6 +33,10 @@ STANDING_FACTS = {
                             "regime improves results, so it is kept only as a pre-registered paper experiment."),
     "rejected_by_tests": "intraday (costs), frequent swing trading (15-year test failed), ML stock picker (worse than the M2 rule)",
     "weak_market_rule": "momentum portfolios move to a liquid fund when NIFTY is weak (validated: weak-market trades lost money in every swing variant)",
+    "cost_basis": ("Paper positions opened from 23 Oct 2026 pay Upstox's real delivery charges (Rs.20 per order + "
+                   "Rs.20+GST DP per sell, about Rs.71 more per swing round trip); older positions keep the old model "
+                   "(no brokerage/DP) and are not re-priced. Cost re-check 22 Oct: after tax M2 21.18%, G 9.74%, "
+                   "NIFTY ETF 10.95% at Rs.3 lakh; at Rs.1 lakh M2 20.79%, G 9.10%, ETF 11.11%."),
     "tax_assumption": "owner's income up to Rs.12 lakh: FD/liquid fund effectively tax-free; shares STCG 20%, LTCG 12.5% above Rs.1.25L",
 }
 
