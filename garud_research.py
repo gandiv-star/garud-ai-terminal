@@ -3,7 +3,7 @@ database (never typed in). A test that was never run is shown as NOT RUN / NOT T
 from datetime import timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
-STUDIES = ("COST_RECHECK", "TAX_STUDY", "ML_LAB", "M2_ROBUSTNESS", "SWING2_15Y", "MOMENTUM_200", "PORTFOLIO_15Y", "EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
+STUDIES = ("PAPER_REPLAY", "COST_RECHECK", "TAX_STUDY", "ML_LAB", "M2_ROBUSTNESS", "SWING2_15Y", "MOMENTUM_200", "PORTFOLIO_15Y", "EVIDENCE_MATRIX", "LONGTERM_COMPARISON", "LONGTERM_15Y", "INTRADAY_TEST")
 SAME_ASSUMPTIONS = ("Same engine for every strategy: entry at the next day's open, stop 2×ATR, "
                     "1% risk of ₹1,00,000 per trade, real delivery charges (STT, exchange, stamp, GST); "
                     "intraday and options tests use their own real cost models.")
@@ -112,6 +112,19 @@ def momentum_paper_rows(rebals: list, navs: list, names: dict, capital=100000.0)
     return out
 
 
+def paper_replay_summary(p: dict) -> dict:
+    lines = [(f'{r.get("portfolio")} ₹{(r.get("capital") or 0):,.0f}',
+              f'paper {r.get("paper_cagr")}% vs backtest {r.get("backtest_cagr")}% વર્ષે (ફરક {r.get("gap_pp")}) · '
+              f'ઘટાડો {r.get("paper_max_dd")}% · રોકડ {r.get("avg_idle_cash_pct")}% · {r.get("weak_months")}/{r.get("months")} મહિના liquid')
+             for r in p.get("rows") or []]
+    lines.append(("NIFTY ETF / FD (એ જ સમય)", f'{p.get("nifty_etf_cagr")}% / 7%'))
+    ok = [f'{r["portfolio"]} ₹{r["capital"]:,.0f}' for r in p.get("rows") or [] if r.get("engine_ok")]
+    allok = bool(p.get("rows")) and len(ok) == len(p.get("rows"))
+    return {"title": "Paper replay — અસલ paper engine છેલ્લાં 2 વર્ષ પર", "pass": allok,
+            "verdict": "Engine backtest જેવું જ ચાલે છે" if allok else ("OK: " + ", ".join(ok) if ok else "Engine અને backtest માં મોટો ફરક"),
+            "lines": lines, "period": f'{p.get("start", "—")} → {p.get("end", "—")}'}
+
+
 def cost_recheck_summary(p: dict) -> dict:
     lines = []
     for sc in p.get("scenarios") or []:
@@ -208,7 +221,8 @@ def portfolio_summary(p: dict) -> dict:
 
 def study_cards(studies: dict) -> list:
     """[(kind, when or None, summary dict or None)] in a fixed order."""
-    makers = {"COST_RECHECK": cost_recheck_summary,
+    makers = {"PAPER_REPLAY": paper_replay_summary,
+              "COST_RECHECK": cost_recheck_summary,
               "TAX_STUDY": tax_study_summary,
               "ML_LAB": ml_lab_summary,
               "M2_ROBUSTNESS": m2_robustness_summary,
