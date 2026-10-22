@@ -18,18 +18,25 @@
 | ML picker | 10 years out-of-sample | 13.67% | — | 40% | Not adopted (lost to M2 by more than 2 pp) |
 | Options iron condor | Forward only | — | — | 1/30 closed: −₹2,874 | Not proven. No backtest (no free historical options data) |
 
-**Important cost caveat (P0 finding, 22 Oct):**
-- All rows above use brokerage ₹0 and no DP charge.
-- Upstox 2026 delivery charges are ₹20 per order plus ₹20 + GST DP per sell.
-- Effect: about ₹71 extra per swing round trip, and a lower momentum result (more so at ₹1 lakh).
-- Run Actions → "Cost re-check (Upstox 2026 charges)" to restate the numbers. The old results are kept.
+**Costs (P0 finding, resolved 22 Oct):**
+- The rows above use the old model (brokerage ₹0, no DP).
+- The Cost re-check with Upstox 2026 charges, after tax:
+
+| Strategy | ₹3 lakh | ₹1 lakh |
+|---|---|---|
+| M2 | 21.18% | 20.79% |
+| G | 9.74% | 9.10% |
+| NIFTY ETF | 10.95% | 11.11% |
+
+- Swing trades cost about ₹71 more each.
+- Since 23 Oct 2026, new paper positions pay the real charges.
 
 ## Validation checklist (Part 7)
 
 | # | Check | Swing v1–v3 | Options condor | M2 | G |
 |---|---|---|---|---|---|
 | 1 | Net return after costs | Yes (ChargeModel) | Yes (leg charges) | Yes | Yes |
-| 2 | Brokerage, STT, exchange charges, GST, stamp duty | STT, exchange, GST, stamp: yes. **Brokerage + DP: no (P0)** | Yes | Same gap (P0) | Same gap (P0) |
+| 2 | Brokerage, STT, exchange charges, GST, stamp duty, DP | Yes for positions from 23 Oct 2026; benchmark v3 | Yes | Yes (paper from 2 Nov; Cost re-check) | Yes (same) |
 | 3 | Realistic slippage | FillModel v2 (benchmark v2) | Bid/ask fills | Charges only | Charges only |
 | 4 | Corporate actions / dividends | Adjusted prices (yfinance) | n/a | Adjusted prices + rename/demerger stitching | Same |
 | 5 | Look-ahead bias | Completed bars only; tested | n/a | Signal at month-end close, fill next session | Same |

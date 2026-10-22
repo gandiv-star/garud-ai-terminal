@@ -6,7 +6,7 @@
 
 ## State at hand-off
 - **Live trading:** OFF. Everything is paper or sandbox.
-- **Tests:** 229 pass locally; GitHub "Tests" must be green after every upload.
+- **Tests:** 233 pass locally; GitHub "Tests" must be green after every upload.
 - **Paper tests running:**
   - Swing v1/v2/v3: 30 trades each.
   - Options condor: 30 condors.
@@ -14,17 +14,12 @@
 - **No strategy is proven profitable yet.**
 
 ## Waiting for the owner (decisions, not code)
-1. **Cost model.**
-   - Run Actions → "Cost re-check (Upstox 2026 charges)".
-   - Then decide whether new paper trades and a new benchmark version should use `backtest_engine.upstox_delivery_2026()`.
-   - Old results must be kept (create a new BENCH version; never rewrite stored ones).
+1. **Cost model: DONE** (decision A approved 22 Oct; real charges from 23 Oct 2026). The owner should run Actions → "Rule benchmark v2 + v3" once to store benchmark v3.
 2. **Gap-aware paper stops** (`paper_rule.GAP_AWARE_STOPS`): ON or OFF for new trades.
 3. **Upstox sandbox token:** renew before 29 Oct 2026.
 
 ## Next highest-priority tasks (in order)
-1. After the owner's cost decision, implement it.
-   - Pass a ChargeModel choice into `paper_rule.net_pnl`, `rule_report.compute_benchmarks` (new BENCH_VERSION) and `longterm.simulate`.
-   - Add tests; keep the old numbers visible.
+1. Confirm benchmark v3 was stored (Research tab, "Backtest સાચા ખર્ચે (v3)").
 2. Check the first weekly backup with the restore drill (Sunday Telegram: "Restore drill OK").
 3. Check the first pip-audit report in the Tests summary; raise caps for vulnerable packages if needed.
 4. After 3 momentum rebalances (around Feb 2027), add the momentum decay check (inventory ID 8).

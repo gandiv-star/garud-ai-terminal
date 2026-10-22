@@ -36,6 +36,17 @@
 
 **After part 2:** 229 tests passed, 0 failed; UI smoke test passed.
 
+## Session 22 Oct 2026, part 3 (owner decision A: real broker charges)
+
+| # | Change | Files | Tests | Result |
+|---|---|---|---|---|
+| 14 | Paper positions **opened from 23 Oct 2026** are priced with Upstox 2026 delivery charges. `charges_for(entry_day)` is chosen by entry/fill day; older positions keep the old model and are never re-priced | `backtest/backtest_engine.py` (`REAL_COSTS_FROM`, `charges_for`), `backtest/paper_rule.py` (`net_pnl(..., entry_day)`), `backtest/run_momentum_paper.py` | `tests/test_real_costs.py` (3) | PASS |
+| 15 | Momentum rebalance charges **one order per symbol**, so the flat ₹20 brokerage is counted once (not per share in the top-up loop). Results under the old percentage-only model are identical | `backtest/momentum_paper.py` | `tests/test_real_costs.py`, `test_momentum_paper.py` | PASS |
+| 16 | Benchmark **v3** = FillModel v2 + real charges, stored next to v1/v2 by the "Rule benchmark v2 + v3" workflow. Checkpoints keep v1, so the yardstick is never lowered after seeing results | `backtest/rule_report.py`, `backtest/run_benchmark_v2.py`, `.github/workflows/benchmark_v2.yml`, `garud_mobile.py` (research row) | `tests/test_benchmarks.py` +1 | PASS. Owner must run the workflow once |
+| 17 | Home open-P&L estimate uses the entry day's charge model. Ask Garud knows the cost basis and the Cost re-check results (`ask_v3`) | `garud_mobile.py`, `llm/ask_garud.py` | UI smoke test | PASS |
+
+**After part 3:** 233 tests passed, 0 failed; UI smoke test passed.
+
 ## Earlier sessions (for traceability)
 
 - **18 Oct:**

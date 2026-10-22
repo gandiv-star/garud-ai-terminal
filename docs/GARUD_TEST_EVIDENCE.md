@@ -15,10 +15,11 @@
 |---|---|---|
 | Baseline 27ae2be | 215 | 0 |
 | After audit changes | 223 | 0 |
-| After part 2 (P2 items) | **229** | **0** |
+| After part 2 (P2 items) | 229 | 0 |
+| After part 3 (real charges) | **233** | **0** |
 | UI smoke test, after | 10/10 screens | 0 |
 
-**Per file** (number of test functions; parametrised cases make the total 229):
+**Per file** (number of test functions; parametrised cases make the total 233):
 
 | File | Tests | File | Tests |
 |---|---|---|---|
@@ -26,9 +27,10 @@
 | test_ask_garud | 6 | test_nse_calendar (new) | 2 |
 | test_backtest_fills | 10 | test_options_paper | 8 |
 | test_backup_db | 3 (+2 new) | test_paper_rule | 11 |
-| test_benchmarks | 2 | test_portfolio15 | 8 |
+| test_benchmarks | 3 | test_portfolio15 | 8 |
 | test_check_tokens | 2 | test_repo_hygiene | 3 |
 | test_cost_recheck (new) | 4 | test_tools_modules (new) | 4 |
+| test_real_costs (new) | 3 | | |
 | test_live_executor | 11 | test_sandbox_mirror | 4 |
 | test_live_gates | 19 | test_scanner | 1 |
 | test_live_guard | 9 | test_swing2 | 5 |
@@ -49,6 +51,7 @@
 | 21 Oct | ML lab: ML not adopted |
 | 21 Oct 21:22 | Tax study: M2 21.79% and G 10.02% after tax; NIFTY ETF 10.95%; FD 7% |
 | 21 Oct 21:30 | App screenshot: data 21 Oct, run 1 hour ago, v2 6/30 closed (−₹4,064), condor 1/30 (−₹2,874) |
+| 22 Oct ~13:00 | Cost re-check: M2 21.18% / G 9.74% / ETF 10.95% after tax with Upstox charges at ₹3L; ₹71 extra per swing trade |
 | 22 Oct 10:20 | Ask Garud answered from real data. One wrong fact was found and corrected (`ask_v2`) |
 
 ## Known failures found and fixed this month

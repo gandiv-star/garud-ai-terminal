@@ -10,7 +10,7 @@ Being AI/ML does not raise a feature's priority. An "AI feature" that lost to a 
 
 | Item | Status |
 |---|---|
-| **Cost model understates broker charges.** Every backtest and paper P&L assumes brokerage ₹0 and no DP charge. Upstox 2026: ₹20 per order, plus ₹20 + GST DP per scrip sold (about ₹71 extra per swing round trip) | Measurement ready: Actions → "Cost re-check (Upstox 2026 charges)". **Owner approval needed** to make `upstox_delivery_2026()` the model for new paper trades and a new benchmark version. Old results are kept, not rewritten |
+| **Cost model understated broker charges** (brokerage ₹0, no DP; real Upstox 2026: ₹20/order + ₹20+GST DP per sell) | **RESOLVED 22 Oct.** Owner approved decision A. Positions opened from 23 Oct 2026 pay real charges; benchmark v3 added; older trades and results unchanged |
 
 Live trading is OFF, so the execution items below are P3 today. They **become P0 on the day live trading is considered**:
 

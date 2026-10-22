@@ -33,8 +33,8 @@ Anything that needs the live database or secrets is marked UNVERIFIED or BLOCKED
   - Garud ના બધા backtests અને paper P&L brokerage ₹0 અને DP charge ₹0 માનીને ગણાયા છે.
   - Upstox ના 22 ઓક્ટોના સત્તાવાર દર: delivery માં દરેક order પર ₹20 brokerage, અને દરેક વેચાણ પર ₹20 + GST DP charge.
   - અસર: દરેક swing trade પર આશરે ₹71 વધુ ખર્ચ થાય. Momentum પર પણ અસર છે; નાની રકમ (₹1 લાખ) પર વધુ.
-  - **શું કર્યું:** સાચા દરનો નમૂનો (`upstox_delivery_2026`) અને "Cost re-check" અભ્યાસ તૈયાર કર્યા.
-  - **શું નથી કર્યું:** paper P&L કે જૂના benchmarks બદલ્યા નથી, કારણ કે તે હાલનું વર્તન બદલે છે. તે માટે **તમારી મંજૂરી** જોઈએ.
+  - **શું કર્યું:** સાચા દરનો નમૂનો (`upstox_delivery_2026`) અને "Cost re-check" અભ્યાસ તૈયાર કર્યા. પરિણામ (22 ઓક્ટો): tax અને સાચા ખર્ચ પછી M2 21.18% અને G 9.74% (₹3 લાખ).
+  - **✅ ઉકેલાયું (તમારી મંજૂરી, નિર્ણય A, 22 ઓક્ટો):** 23 ઓક્ટોથી ખુલતા paper trades સાચા ખર્ચે ગણાય છે. નવું benchmark v3 પણ ઉમેર્યું. જૂનાં પરિણામો એમ જ છે.
 - **બાકીની P0 ચકાસણીઓમાં કોઈ ખામી નથી** (પુરાવા વિભાગ 3 માં):
   - live trading બંધ છે અને તેના દરેક દરવાજાના tests છે;
   - એક જ trade બે વાર બનતો નથી;
@@ -59,7 +59,7 @@ Anything that needs the live database or secrets is marked UNVERIFIED or BLOCKED
 | Commit | 27ae2be (main), clean working tree, in sync with GitHub |
 | Python files | 142 files at baseline (144 after this audit), about 15,000 lines |
 | Tests before this audit | 215 passed, 0 failed (local runner; GitHub "Tests" workflow green per owner) |
-| Tests after this audit | 229 passed, 0 failed, plus the UI smoke test of all 10 screens passed |
+| Tests after this audit | 233 passed, 0 failed, plus the UI smoke test of all 10 screens passed |
 | Workflows | 16. Rule/momentum/options paper (6 cron times plus a cron-job.org dispatch), Tests, weekly backup, one-time studies, dry run |
 | Database | Neon Postgres: tables `trades` and `audit_events`. Last known size 20 trades / 170 events (backup on 19 Oct) |
 | Live trading | OFF. TRADING_MODE=PAPER; no LIVE_* variables set (per handbook and the owner) |
@@ -93,7 +93,7 @@ Anything that needs the live database or secrets is marked UNVERIFIED or BLOCKED
 | 23 | Market data freshness | WORKING_VERIFIED | Health check; now aware of NSE holidays |
 | 24 | System health dashboard | WORKING_VERIFIED | Health tab |
 | 25 | Broker sandbox validation | WORKING_VERIFIED | Sandbox reconciliation with expected orders |
-| 26 | Cost model | **PARTIAL (P0 finding)** | `ChargeModel` includes STT, exchange charges, GST and stamp duty (tests/test_paper_rule.py::test_net_pnl_includes_charges). It assumes **brokerage ₹0 and no DP charge**, but Upstox charges ₹20/order and ₹20+GST DP per sell (upstox.com/brokerage-charges, 22 Oct 2026). Prepared: `upstox_delivery_2026()` and the "Cost re-check" workflow. Switching is pending owner approval |
+| 26 | Cost model | **WORKING_VERIFIED (P0 finding fixed 22 Oct)** | `ChargeModel` includes STT, exchange charges, GST and stamp duty (tests/test_paper_rule.py::test_net_pnl_includes_charges). It assumes **brokerage ₹0 and no DP charge**, but Upstox charges ₹20/order and ₹20+GST DP per sell (upstox.com/brokerage-charges, 22 Oct 2026). Owner approved decision A (22 Oct): positions opened from 23 Oct 2026 are priced with `upstox_delivery_2026()` (`backtest_engine.charges_for`). Benchmark v3 added; older trades and results are unchanged |
 | 27 | NIFTY/benchmark comparison | WORKING_VERIFIED | Every long-term study includes NIFTY ETF and FD |
 | 28 | DB and scheduler reliability | PARTIAL | Concurrency group, idempotent ids and catch-up logic all work. Backup restore drill runs in production from the next Sunday |
 
@@ -129,7 +129,7 @@ These numbers came from old screenshots or reports. None of them is today's live
 | Duplicate orders | internal_order_id is the DB primary key; rule_already_used; options one-per-expiry; workflow concurrency | PASS |
 | Stale data | Entry needs today's bar; stock date must equal NIFTY date; momentum refuses prices more than 6 days old | PASS |
 | P&L correctness | Closed P&L includes STT, exchange charges, GST and stamp duty. Open P&L was gross (now labelled, with a net estimate added) | PASS after fix |
-| **Cost model vs broker** | **Brokerage ₹0 and no DP charge assumed; Upstox 2026 = ₹20/order + ₹20+GST DP per sell (about ₹71 extra per swing round trip)** | **P0 FINDING.** Measurement study added; switch pending owner approval |
+| **Cost model vs broker** | **Brokerage ₹0 and no DP charge assumed; Upstox 2026 = ₹20/order + ₹20+GST DP per sell (about ₹71 extra per swing round trip)** | **P0 FINDING → RESOLVED.** Owner approved decision A on 22 Oct; positions opened from 23 Oct 2026 use real charges |
 | Database corruption | Weekly backup; no restore test existed | FIXED (restore drill) |
 | AI authority | AI modules never import brokers; prompts forbid decisions | PASS |
 
@@ -180,7 +180,7 @@ Abbreviations: W = WORKING_VERIFIED, P = PARTIAL, C = CODE_ONLY, N = NOT_IMPLEME
 | 25 | Order State Machine | P | P2 (P0 before live) | brokers/base_broker.py OrderStatus; live_executor handles PENDING/OPEN/PARTIALLY_FILLED/REJECTED; sandbox_m… |
 | 26 | Broker Position Reconciliation | P | P2 (P0 before live) | backtest/sandbox_mirror.py reconcile expected vs mirrored; live_executor.held_quantity(); execution/reconci… |
 | 27 | Duplicate Order / Idempotency Protection | W | - | Deterministic internal_order_id (rule-symbol-signal_date) as DB primary key (database/db.py); rule_already_… |
-| 28 | Execution Quality and Slippage Report | P | P0 | FillModel v2 slippage (+0.05% entry, -0.05% exit); ChargeModel. P0 FINDING 22 Oct: ChargeModel assumes brok… |
+| 28 | Execution Quality and Slippage Report | P | P2 | FillModel v2 slippage (+0.05% entry, -0.05% exit); ChargeModel. P0 FINDING 22 Oct: ChargeModel assumes brok… |
 | 29 | Safe Retry Logic | P | P2 | llm/advisor.advise() retries transient errors; pipeline re-runs pick up missed work (momentum due_month_end… |
 | 30 | Emergency Exit / Flatten Workflow | N | P2 (P0 before live) | Kill switch blocks new BUYs only (safety/kill_switch.py, GARUD_KILL_SWITCH) |
 
