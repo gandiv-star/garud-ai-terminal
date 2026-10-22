@@ -32,6 +32,7 @@ GTT_PLACE_URL = "https://api.upstox.com/v3/order/gtt/place"
 GTT_CANCEL_URL = "https://api.upstox.com/v3/order/gtt/cancel"
 POSITIONS_URL = "https://api.upstox.com/v2/portfolio/short-term-positions"
 HOLDINGS_URL = "https://api.upstox.com/v2/portfolio/long-term-holdings"
+FUNDS_URL = "https://api.upstox.com/v2/user/get-funds-and-margin"   # Upstox API v2 (not yet exercised live)
 LIVE_MODES = ("CONTROLLED_LIVE", "LIVE")
 DEFAULT_MAX_ORDER_VALUE = 25000.0
 
@@ -128,6 +129,12 @@ class UpstoxLiveBroker(UpstoxSandboxBroker):
         return body
 
     # -- portfolio (read-only; needs the registered static IP) ----------------------
+    def get_funds(self) -> dict:
+        """Equity funds and margin ({"data": {"equity": {"available_margin": ...}}})."""
+        self.authenticate()
+        return self._check(requests.get(FUNDS_URL, headers=self._headers(), params={"segment": "SEC"},
+                                        timeout=self.timeout))
+
     def get_positions(self) -> dict:
         self.authenticate()
         return self._check(requests.get(POSITIONS_URL, headers=self._headers(), timeout=self.timeout))
