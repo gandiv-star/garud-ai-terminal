@@ -20,15 +20,14 @@
 
 **Costs (P0 finding, resolved 22 Oct):**
 - The rows above use the old model (brokerage ₹0, no DP).
-- The Cost re-check with Upstox 2026 charges, after tax:
+- The Cost re-check with Upstox 2026 charges, after tax (**corrected re-run, 22 Oct**):
 
 | Strategy | ₹3 lakh | ₹1 lakh |
 |---|---|---|
-| M2 | 21.18% | 20.79% |
-| G | 9.74% | 9.10% |
+| M2 | 21.49% | 20.99% |
+| G | 9.72% | 9.06% |
 | NIFTY ETF | 10.95% | 11.11% |
 
-- ⚠️ **These Upstox rows are superseded.** A bug (fixed 22 Oct, part 5) left some money uninvested in the backtest under flat ₹20 charges. Re-run Actions → "Cost re-check (Upstox 2026 charges)" for corrected figures; the old-model rows and TAX_STUDY are unaffected.
 - Swing trades cost about ₹71 more each.
 - Since 23 Oct 2026, new paper positions pay the real charges.
 
@@ -110,3 +109,19 @@
 | Momentum paper vs backtest | Monthly fills from 2 Nov 2026; decision Feb 2027 |
 | Options backtest | Paid historical option-chain data |
 | Charges vs a real contract note | A real order (live is OFF) |
+
+## Paper replay — the real paper engine on the last 2 years (22 Oct 2026)
+
+Period 2024-10-11 → 2026-10-22, with whole shares, paper capital, Upstox charges and fills at the next close.
+
+| Portfolio | Paper | Backtest | Gap | Max fall | Idle cash | Months in liquid fund |
+|---|---|---|---|---|---|---|
+| M2 ₹3L | 7.84%/yr | 7.84% | 0.0 pp | 10.6% | 1.4% | 14/24 |
+| G ₹1L | 1.37% | 0.55% | 0.8 pp | 9.3% | 5.5% | 14/24 |
+| M2 ₹1L | 6.68% | 6.05% | 0.6 pp | 10.4% | 5.1% | 14/24 |
+
+- NIFTY ETF over the same period: −3.56%/yr. FD: 7%.
+- **Engine OK for all three:** the paper engine reproduces the backtest.
+- **Reality check:** in the last 2 years M2 earned about FD-level returns, before tax, mainly by sitting in the liquid fund during the weak market. It did *not* earn the 15-year average of about 21%.
+- G earned less than FD.
+- Expect long FD-like or worse stretches.
