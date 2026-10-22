@@ -35,9 +35,12 @@ STANDING_FACTS = {
     "weak_market_rule": "momentum portfolios move to a liquid fund when NIFTY is weak (validated: weak-market trades lost money in every swing variant)",
     "cost_basis": ("Paper positions opened from 23 Oct 2026 pay Upstox's real delivery charges (Rs.20 per order + "
                    "Rs.20+GST DP per sell, about Rs.71 more per swing round trip); older positions keep the old model "
-                   "(no brokerage/DP) and are not re-priced. Cost re-check 22 Oct: after tax M2 21.18%, G 9.74%, "
-                   "NIFTY ETF 10.95% at Rs.3 lakh; at Rs.1 lakh M2 20.79%, G 9.10%, ETF 11.11%. NOTE: those Upstox-charge "
-                   "figures were made before a fix on 22 Oct (some money stayed uninvested); a re-run supersedes them."),
+                   "(no brokerage/DP) and are not re-priced. Cost re-check (corrected re-run 22 Oct, 15 years, after tax): "
+                   "Rs.3 lakh: M2 21.49%, G 9.72%, NIFTY ETF 10.95%; Rs.1 lakh: M2 20.99%, G 9.06%, ETF 11.11%; FD 7%."),
+    "paper_replay": ("Paper replay 22 Oct 2026 (the real paper engine on the last 2 years, 2024-10-11 to 2026-10-22, "
+                     "real charges): M2 Rs.3L 7.84%/yr (backtest 7.84%), G Rs.1L 1.37%, M2 Rs.1L 6.68%; max fall ~10%; "
+                     "14 of 24 months in the liquid fund (weak market); NIFTY ETF -3.56%/yr same period; engine OK for all. "
+                     "Shows the engine works; recent momentum returns were close to FD, not the 15-year 21%."),
     "swing_benchmarks_5y": ("Rule benchmarks 2021-09-28 to 2026-09-26. v1 legacy fills: v1 PF 1.43, v2 PF 1.14, v3 PF 1.28 "
                             "(the pre-registered yardstick). Benchmark v3 = realistic gap fills + slippage + Upstox charges "
                             "(22 Oct 2026): v1-8 stocks PF 1.04 net +Rs.1,378 (90 trades); v2-NIFTY 50 PF 0.87 net "
