@@ -97,11 +97,16 @@ class FakeDB:
 class FakeBroker:
     """Records orders; never connects anywhere."""
 
-    def __init__(self, status=None, filled=0, holdings=None):
+    def __init__(self, status=None, filled=0, holdings=None, funds=10_000_000.0):
         from brokers.base_broker import OrderStatus
         self.orders, self.cancelled, self.gtt_cancelled, self.gtts = [], [], [], []
         self.status = status or OrderStatus.PENDING
-        self.filled, self.holdings = filled, dict(holdings or {})
+        self.filled, self.holdings, self.funds = filled, dict(holdings or {}), funds
+
+    def get_funds(self):
+        if isinstance(self.funds, Exception):
+            raise self.funds
+        return {"data": {"equity": {"available_margin": self.funds}}}
 
     def place_order(self, req):
         self.orders.append(req)

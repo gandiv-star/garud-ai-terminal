@@ -151,3 +151,21 @@ def test_net_premium_sign_open_and_close():
 def test_verdict_maths():
     s = op.stats([{"net_pnl": 1500}] * 22 + [{"net_pnl": -2000}] * 8, date(2026, 1, 1), date(2026, 7, 1))
     assert s["verdict"] == "PASS"
+
+
+def test_diagnose_closed_condor():
+    entry = {"id": "IC-2026-10-27", "time": "2026-10-21T09:40:00+05:30", "lot": 65, "credit": 36.8,
+             "entry_charges": 120.0,
+             "legs": [{"type": "CE", "strike": 25450.0, "side": -1, "entry": 40.0},
+                      {"type": "PE", "strike": 24550.0, "side": -1, "entry": 38.0},
+                      {"type": "CE", "strike": 25650.0, "side": 1, "entry": 12.0},
+                      {"type": "PE", "strike": 24350.0, "side": 1, "entry": 11.0}]}
+    exit_ = {"id": "IC-2026-10-27", "time": "2026-10-21T14:40:00+05:30", "reason": "STOP_LOSS", "debit": 78.0,
+             "exit_prices": [95.0, 20.0, 30.0, 7.0], "exit_charges": 110.0, "net_pnl": -2874.0}
+    d = op.diagnose(entry, exit_)
+    eff = {r["leg"]: r["effect"] for r in d["legs"]}
+    assert eff["SELL 25450CE"] == -3575.0 and eff["SELL 24550PE"] == 1170.0
+    assert eff["BUY 25650CE"] == 1170.0 and eff["BUY 24350PE"] == -260.0
+    assert d["worst_leg"] == "SELL 25450CE" and d["same_day"] and d["charges"] == 230.0
+    settled = op.diagnose(entry, {**exit_, "exit_prices": None, "reason": "SETTLED"})
+    assert all(r["effect"] is None for r in settled["legs"]) and settled["worst_leg"] is None
