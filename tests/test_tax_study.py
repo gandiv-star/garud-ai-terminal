@@ -79,3 +79,18 @@ def test_run_rows_and_card():
     from backtest import run_tax_study
     text = run_tax_study.summary_text(res)
     assert "after tax" in text and "CA" in text
+
+
+def test_flat_charges_never_leave_a_stock_in_cash():
+    """Regression (22 Oct 2026, found by the paper replay): with Rs.20/order charges the old 0.2% buffer
+    was too small, so the last buys of a rebalance were skipped and that money sat in the liquid fund."""
+    from backtest.backtest_engine import upstox_delivery_2026
+    data, start, _ = m2.load(tm.SYMS, tm.END, {}, loader=tm.Loader(), nifty=tm._nifty(0.0004), eval_days=900)
+    mkt = data.mkt
+    i0 = max(lt.bisect_right(mkt.dates, start) - 1, 1)
+    target = {s: 1 / 20 for s in tm.SYMS[:20]}
+    res = ts.simulate_taxed(mkt, i0, lambda i: target, [i0 - 1], taxed=False, capital=100000,
+                            charges=upstox_delivery_2026())
+    first = res["curve"][0][1]
+    assert res["trades"] == 20                                   # every one of the 20 buys happened
+    assert 99000 < first < 100000
