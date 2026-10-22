@@ -16,7 +16,7 @@ CARD, BORDER, LINE = "#12233D", "#1E3A5F", "#1A2F4D"
 
 VIEWS = {"🏠 આજ": "home", "🧭 Mode": "mode", "🔎 Scanner": "scanner", "📊 Chart": "chart",
          "📈 Trades": "trades", "🛡 Risk": "risk", "🎯 Options": "options",
-         "🔬 સંશોધન": "research", "🩺 Health": "health", "🛠 Tools": "tools"}
+         "🔬 સંશોધન": "research", "🤖 પૂછો": "ask", "🩺 Health": "health", "🛠 Tools": "tools"}
 DOT = {"ok": GREEN, "warn": AMBER, "bad": RED, "na": MUTED}
 
 REGIME_GU = {
@@ -264,7 +264,7 @@ def render(view: str, settings) -> None:
     key = datetime.now(IST).strftime("%Y%m%d%H%M")[:11]   # cache key changes every 10 minutes
     pages = {"home": home, "mode": mode_page, "scanner": scanner_page, "chart": chart_page,
              "trades": trades_page, "risk": risk_page, "options": options_page, "research": research_page,
-             "health": health_page}
+             "ask": ask_page, "health": health_page}
     try:
         pages[view](settings, key)
     except Exception as e:
@@ -356,7 +356,8 @@ def home(settings, key) -> None:
         if t["entry_date"]:
             events.append((t["entry_date"], f'🟢 {t["symbol"]} ખરીદ્યો', f'₹{t["entry"]:,.1f}', None))
     for e in opt["entries"]:
-        events.append((date.fromisoformat(e["time"][:10]), f'🎯 Condor {e["id"]} ખુલ્યો', _money(e["credit"] * e["lot"]), None))
+        events.append((date.fromisoformat(e["time"][:10]), f'🎯 Condor {e["id"]} ખુલ્યો',
+                       "premium " + _money(e["credit"] * e["lot"], sign=False), MUTED))   # not a profit yet
     for x in opt["exits"]:
         events.append((date.fromisoformat(x["time"][:10]), f'🎯 Condor {x["id"]} {x["reason"]}', _money(x["net_pnl"]), _col(x["net_pnl"])))
     events.sort(key=lambda e: e[0], reverse=True)
@@ -564,6 +565,7 @@ def mode_page(settings, key) -> None:
     card("Mode ક્યારે બદલાશે", (conds + '<div class="g-s" style="margin-top:6px">ત્રણેય ✅ થાય તો regime '
                                'MODERATE_BULL બને: ત્યારે Trend Following (v3) ચાલુ થાય અને v1/v2 નવા trades બંધ કરે.</div>')
          if conds else '<div class="g-s">માહિતી નથી</div>')
+    macro_card()
     card("પ્રામાણિક નોંધ", '<div class="g-s">આ mode કોઈ આગાહી નથી. 8 ઓક્ટો 2026 ના evidence matrix માં '
                           '"regime પ્રમાણે strategy બદલવાથી ફાયદો" સાબિત થયો નથી. Mode માત્ર બતાવે છે કે પહેલેથી '
                           'નક્કી કરેલા કયા paper rules આજે trade લેવા લાયક છે. પાસ/નાપાસ 30 trades પછી જ.</div>')
@@ -574,6 +576,41 @@ def mode_page(settings, key) -> None:
         card("Mode નો ઇતિહાસ (રોજ automatic run નોંધે છે)", body or '<div class="g-s">હજી નોંધ નથી — આગલા run થી શરૂ થશે</div>')
     except Exception as e:
         card("Mode નો ઇતિહાસ", f'<div class="g-s">Unavailable: {_e(e)}</div>')
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_macro(key: str) -> dict:
+    from backtest import macro
+    return macro.fetch(datetime.now(IST).date())
+
+
+def macro_card() -> None:
+    from backtest import macro
+    try:
+        mc = load_macro(datetime.now(IST).strftime("%Y%m%d%H"))
+    except Exception as e:
+        card("બજારનું વાતાવરણ (macro)", f'<div class="g-s">Unavailable: {_e(e)}</div>')
+        return
+    body = ""
+    for r in mc["rows"]:
+        if not r.get("ok"):
+            body += row(_e(r["label"]), "—", "ડેટા મળ્યો નહીં", MUTED)
+            continue
+        unit = r.get("unit") or ""
+        val = f'{r["last"]:,.2f}%' if unit == "%" else f'{unit}{r["last"]:,.2f}'
+        sub = " · ".join(x for x in (
+            f'1 દિવસ {r["chg_1d"]:+.2f}%' if r.get("chg_1d") is not None else "",
+            f'1 મહિનો {r["chg_1m"]:+.2f}%' if r.get("chg_1m") is not None else "",
+            macro.vix_note(r["last"]) if r["label"] == "India VIX" else "", r.get("date") or "") if x)
+        body += row(_e(r["label"]), val, _e(sub))
+    b = mc["breadth"]
+    body += row("NIFTY 50 ના શેર 200-દિવસ સરેરાશથી ઉપર",
+                f'{b["above"]}/{b["total"]}' if b.get("total") else "—",
+                f'{b["pct"]}% · {macro.breadth_note(b["pct"])}' if b.get("pct") is not None else "ડેટા મળ્યો નહીં",
+                GREEN if (b.get("pct") or 0) >= 60 else RED if b.get("pct") is not None and b["pct"] < 40 else AMBER)
+    body += ('<div class="g-s" style="margin-top:6px">માત્ર માહિતી — કોઈ નિયમ કે mode આના પરથી બદલાતો નથી. '
+             'FII/DII નો વિશ્વસનીય મફત ડેટા નથી, એટલે બતાવ્યો નથી. કલાકે એક વાર તાજું.</div>')
+    card("બજારનું વાતાવરણ (macro)", body)
 
 
 ACTION_COL = {"BUY CANDIDATE": GREEN, "OPEN": BLUE, "WATCH": AMBER, "NO TRADE": MUTED, "DATA ISSUE": RED}
@@ -886,3 +923,109 @@ def research_page(settings, key) -> None:
     card("Garud નો નિયમ", '<div>પહેલાં સાબિતી, પછી પૈસા. દરેક નિયમ ચલાવતાં <b>પહેલાં</b> નક્કી થાય છે; '
                          'પરિણામ જોઈને નિયમ બદલાતો નથી. 30 trades પછી જ પાસ/નાપાસ.</div>')
 
+
+
+# ------------------------------------------------------------------ ask Garud
+def ask_context(settings, key) -> dict:
+    """Facts for "Garud ને પૂછો" — only numbers Garud already shows on its screens."""
+    from llm import ask_garud
+    import garud_research as gr
+    part = {}
+
+    def grab(name, fn):
+        try:
+            part[name] = fn()
+        except Exception as e:
+            part[name] = {"unavailable": str(e)[:120]}
+
+    def mode():
+        m = load_mode(settings, key)
+        return {k: m.get(k) for k in ("mode", "regime", "reason", "data_date", "context")}
+
+    def rules():
+        trades = load_trades(settings, key)
+        out = []
+        opens = [t for t in trades if t["exit"] is None]
+        prices = last_prices(tuple(sorted({t["symbol"] for t in opens}))) if opens else {}
+        for r in _rules():
+            sm = rule_summary(r, trades)
+            out.append({"rule": r.title, "closed": len(sm["closed"]), "target": r.target_trades, "net_closed": sm["net"],
+                        "pf": sm["pf"], "unrealised_open": unrealised(sm["open"], prices),
+                        "open_positions": [{"symbol": t["symbol"], "entry": t["entry"], "stop": t["stop"], "qty": t["qty"],
+                                            "entry_date": t["entry_date"], "last_price": prices.get(t["symbol"])}
+                                           for t in sm["open"]],
+                        "last_closed": [{"symbol": t["symbol"], "pnl": t["pnl"], "exit_date": t["exit_date"]}
+                                        for t in sm["closed"][-5:]]})
+        return out
+
+    def options():
+        from backtest import options_paper as op
+        opt = load_options(settings, key)
+        closed = {x["id"] for x in opt["exits"]}
+        firsts = [date.fromisoformat(e["time"][:10]) for e in opt["entries"]]
+        st_ = op.stats(opt["exits"], min(firsts) if firsts else None, datetime.now(IST).date())
+        if st_["closed"] < op.ANNUAL_MIN_CLOSED:
+            st_.pop("annual_pct", None)
+        return {"stats": st_, "target": op.TARGET_TRADES,
+                "open": [{"id": e["id"], "expiry": e["expiry"], "premium_received": round(e["credit"] * e["lot"])}
+                         for e in opt["entries"] if e["id"] not in closed],
+                "closed": [{"id": x["id"], "reason": x["reason"], "net_pnl": x["net_pnl"]} for x in opt["exits"][-5:]]}
+
+    def momentum():
+        from backtest import momentum_paper as mp
+        mom = load_momentum(settings, key)
+        return [{k: v for k, v in r.items()} for r in gr.momentum_paper_rows(mom["rebals"], mom["navs"], mp.PORTFOLIOS, mp.CAPITALS)]
+
+    def studies():
+        return [{"study": sm["title"], "verdict": sm["verdict"], "passed": sm["pass"], "period": sm.get("period"),
+                 "lines": sm["lines"]} for _, _, sm in gr.study_cards(load_studies(settings, key[:9])) if sm]
+
+    def macro():
+        return load_macro(datetime.now(IST).strftime("%Y%m%d%H"))["summary"]
+
+    def health():
+        h = load_health(settings, key)
+        return {"overall": h["overall"], "checks": [{"name": c.name, "status": c.status, "value": c.value}
+                                                    for c in h["checks"]]}
+
+    for name, fn in (("mode", mode), ("rules", rules), ("options", options), ("momentum", momentum),
+                     ("studies", studies), ("macro", macro), ("health", health)):
+        grab(name, fn)
+    return ask_garud.build_context(**part)
+
+
+def ask_page(settings, key) -> None:
+    from llm import ask_garud
+    from llm.ai_reasoning import AIReasoningEngine
+    card("🤖 Garud ને પૂછો", '<div class="g-s">Garud ના પોતાના આંકડા (paper trades, momentum, options, mode, બજારનું '
+                           'વાતાવરણ, અભ્યાસો) પરથી ગુજરાતીમાં જવાબ. AI ને order મૂકવાની કે નિયમ બદલવાની કોઈ સત્તા નથી; '
+                           'દરેક જવાબ database માં નોંધાય છે. ઉદાહરણ: "આજે બજાર કેવું છે?", "v2 નું અત્યાર સુધીનું '
+                           'પરિણામ સમજાવો", "M2 ક્યારે શરૂ થશે?", "કયા શેરમાં સૌથી વધુ નુકસાન છે?"</div>')
+    hist = st.session_state.setdefault("_g_ask_hist", [])
+    q = st.text_area("પ્રશ્ન", key="_g_ask_q", max_chars=ask_garud.MAX_QUESTION_CHARS,
+                     placeholder="અહીં પ્રશ્ન લખો…", label_visibility="collapsed")
+    if st.button("પૂછો", key="_g_ask_go", use_container_width=True) and ask_garud.clean_question(q):
+        try:
+            db = _db(settings)
+            used = ask_garud.asked_today(db)
+        except Exception:
+            db, used = None, 0
+        if used >= ask_garud.MAX_PER_DAY:
+            st.warning(f"આજના {ask_garud.MAX_PER_DAY} પ્રશ્નો પૂરા થયા — કાલે ફરી પૂછો.")
+        else:
+            with st.spinner("Garud આંકડા જોઈ રહ્યું છે…"):
+                rec = ask_garud.ask(q, ask_context(settings, key), AIReasoningEngine()._call_gemini,
+                                    [(h["question"], h["answer"]) for h in hist])
+            if rec["ok"]:
+                if db is not None:
+                    try:
+                        ask_garud.save(db, rec)
+                    except Exception:
+                        pass
+                hist.append({"question": rec["question"], "answer": rec["answer"], "at": datetime.now(IST).strftime("%H:%M")})
+            else:
+                st.warning("AI unavailable — " + str(rec.get("error")))
+    for h in reversed(hist[-6:]):
+        card(f'❓ {_e(h["question"])}',
+             f'<div style="white-space:pre-wrap">{_e(h["answer"])}</div>'
+             f'<div class="g-s" style="margin-top:6px">{h["at"]} IST · {ask_garud.PROMPT_VERSION}</div>')
